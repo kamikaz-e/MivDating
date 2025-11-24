@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
-import dev.kamikaze.mivdating.ui.OllamaTestScreen
+import dev.kamikaze.mivdating.ui.OllamaRAGScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -20,7 +20,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    OllamaTestScreen(
+                    OllamaRAGScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding)

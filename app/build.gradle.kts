@@ -112,6 +112,9 @@ dependencies {
     // Coil (для загрузки изображений)
     implementation(libs.coil.compose)
 
+    // Jsoup для парсинга HTML
+    implementation(libs.jsoup)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

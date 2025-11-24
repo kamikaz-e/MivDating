@@ -1,7 +1,5 @@
-package dev.kamikaze.mivdating.data
+package dev.kamikaze.mivdating.data.network
 
-import dev.kamikaze.mivdating.data.model.OllamaEmbeddingsRequest
-import dev.kamikaze.mivdating.data.model.OllamaEmbeddingsResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.android.Android
@@ -9,15 +7,18 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 class OllamaClient(
-    private val baseUrl: String = "http://10.0.2.2:11434"
+    private val baseUrl: String = "http://10.0.2.2:11434",
+    private val embeddingModel: String = "nomic-embed-text"
 ) : AutoCloseable {
 
     private val httpClient: HttpClient = HttpClient(Android) {
@@ -28,13 +29,15 @@ class OllamaClient(
                 prettyPrint = true
             })
         }
+
         install(Logging) {
-            level = LogLevel.ALL
+            level = LogLevel.BODY
         }
 
         install(HttpTimeout) {
-            requestTimeoutMillis = 30000
-            connectTimeoutMillis = 15000
+            requestTimeoutMillis = 60_000  // Увеличено для эмбеддингов
+            connectTimeoutMillis = 15_000
+            socketTimeoutMillis = 60_000
         }
     }
 
@@ -44,14 +47,36 @@ class OllamaClient(
             setBody(
                 OllamaEmbeddingsRequest(
                     prompt = text,
-                    model = "nomic-embed-text"
+                    model = embeddingModel
                 )
             )
         }
-        val rawText = response.body<OllamaEmbeddingsResponse>()
+        return response.body<OllamaEmbeddingsResponse>().embedding
+    }
 
-        return rawText.embedding
+    suspend fun embedBatch(texts: List<String>): List<List<Double>> {
+        return texts.map { embed(it) }
+    }
+
+    suspend fun isAvailable(): Boolean {
+        return try {
+            httpClient.get("$baseUrl/api/tags")
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     override fun close() = httpClient.close()
 }
+
+@Serializable
+data class OllamaEmbeddingsRequest(
+    val model: String,
+    val prompt: String
+)
+
+@Serializable
+data class OllamaEmbeddingsResponse(
+    val embedding: List<Double>
+)

@@ -1,4 +1,4 @@
-package dev.kamikaze.mivdating.data.model
+package dev.kamikaze.mivdating.data.models
 
 import kotlinx.serialization.Serializable
 
