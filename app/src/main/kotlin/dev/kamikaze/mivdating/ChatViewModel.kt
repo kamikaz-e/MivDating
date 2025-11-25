@@ -65,22 +65,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
-    var noRagInput by mutableStateOf("")
-        private set
-
-    var ragInput by mutableStateOf("")
+    var commonInput by mutableStateOf("")
         private set
 
     init {
         loadStats()
     }
 
-    fun updateNoRagInput(text: String) {
-        noRagInput = text
-    }
-
-    fun updateRagInput(text: String) {
-        ragInput = text
+    fun updateCommonInput(text: String) {
+        commonInput = text
     }
 
     private fun loadStats() {
@@ -94,13 +87,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Отправка сообщения в оба режима одновременно
+     */
+    fun sendBothMessages() {
+        if (commonInput.isBlank()) return
+
+        val userMessage = commonInput
+        commonInput = ""
+
+        // Отправляем в оба режима параллельно
+        viewModelScope.launch {
+            launch { sendNoRagMessage(userMessage) }
+            launch { sendRagMessage(userMessage) }
+        }
+    }
+
+    /**
      * Отправка сообщения в NO RAG режиме
      */
-    fun sendNoRagMessage() {
-        if (noRagInput.isBlank()) return
-
-        val userMessage = noRagInput
-        noRagInput = ""
+    private fun sendNoRagMessage(userMessage: String) {
+        if (userMessage.isBlank()) return
 
         val userChatMessage = ChatMessage(
             id = UUID.randomUUID().toString(),
@@ -154,11 +160,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Отправка сообщения в RAG режиме
      */
-    fun sendRagMessage() {
-        if (ragInput.isBlank()) return
+    private fun sendRagMessage(userMessage: String) {
+        if (userMessage.isBlank()) return
 
-        val userMessage = ragInput
-        ragInput = ""
+        // Проверяем наличие чанков перед отправкой
+        if (_uiState.value.chunksCount == 0) {
+            val userChatMessage = ChatMessage(
+                id = UUID.randomUUID().toString(),
+                text = userMessage,
+                isUser = true
+            )
+            val errorMessage = ChatMessage(
+                id = UUID.randomUUID().toString(),
+                text = "⚠️ Документы не проиндексированы. Пожалуйста, сначала проиндексируйте документы.",
+                isUser = false
+            )
+            _uiState.value = _uiState.value.copy(
+                ragMessages = _uiState.value.ragMessages + userChatMessage + errorMessage
+            )
+            return
+        }
 
         val userChatMessage = ChatMessage(
             id = UUID.randomUUID().toString(),
@@ -179,9 +200,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val searchResults = vectorDatabase.searchSimilar(queryEmbedding, topK = 5)
 
                 // 2. Формирование контекста из чанков
-                val context = searchResults.mapIndexed { index, result ->
-                    "Документ: ${result.documentTitle}\nФрагмент ${index + 1}:\n${result.chunk.content}"
-                }.joinToString("\n\n---\n\n")
+                val context =  userMessage + searchResults.joinToString("\n") { result ->
+                    result.chunk.content
+                }
 
                 // 3. Формируем историю для API
                 val history = _uiState.value.ragMessages

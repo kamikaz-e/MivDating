@@ -85,8 +85,45 @@ fun ChatScreen(
             }
 
             when (selectedTab) {
-                0 -> NoRagScreen(viewModel = viewModel, uiState = uiState)
-                1 -> RagScreen(viewModel = viewModel, uiState = uiState)
+                0 -> NoRagScreen(
+                    viewModel = viewModel, 
+                    uiState = uiState,
+                    modifier = Modifier.weight(1f)
+                )
+                1 -> RagScreen(
+                    viewModel = viewModel, 
+                    uiState = uiState,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Общее поле ввода для обоих экранов
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { viewModel.clearAll() }) {
+                    Icon(Icons.Default.Clear, "Очистить всё")
+                }
+
+                OutlinedTextField(
+                    value = viewModel.commonInput,
+                    onValueChange = { viewModel.updateCommonInput(it) },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Задайте вопрос...") },
+                    enabled = !uiState.isNoRagLoading && !uiState.isRagLoading,
+                    maxLines = 3
+                )
+
+                IconButton(
+                    onClick = { viewModel.sendBothMessages() },
+                    enabled = viewModel.commonInput.isNotBlank() && !uiState.isNoRagLoading && !uiState.isRagLoading
+                ) {
+                    Icon(Icons.Default.Send, "Отправить")
+                }
             }
         }
     }
@@ -95,10 +132,11 @@ fun ChatScreen(
 @Composable
 fun NoRagScreen(
     viewModel: ChatViewModel,
-    uiState: dev.kamikaze.mivdating.ChatUiState
+    uiState: dev.kamikaze.mivdating.ChatUiState,
+    modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = Modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize()
     ) {
         // Список сообщений
         val listState = rememberLazyListState()
@@ -151,45 +189,17 @@ fun NoRagScreen(
                 )
             }
         }
-
-        // Поле ввода
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { viewModel.clearNoRagChat() }) {
-                Icon(Icons.Default.Clear, "Очистить чат")
-            }
-
-            OutlinedTextField(
-                value = viewModel.noRagInput,
-                onValueChange = { viewModel.updateNoRagInput(it) },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Задайте вопрос...") },
-                enabled = !uiState.isNoRagLoading,
-                maxLines = 3
-            )
-
-            IconButton(
-                onClick = { viewModel.sendNoRagMessage() },
-                enabled = viewModel.noRagInput.isNotBlank() && !uiState.isNoRagLoading
-            ) {
-                Icon(Icons.Default.Send, "Отправить")
-            }
-        }
     }
 }
 
 @Composable
 fun RagScreen(
     viewModel: ChatViewModel,
-    uiState: dev.kamikaze.mivdating.ChatUiState
+    uiState: dev.kamikaze.mivdating.ChatUiState,
+    modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = Modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize()
     ) {
         // Информация о документах
         if (uiState.documentsCount > 0) {
@@ -305,35 +315,6 @@ fun RagScreen(
                     modifier = Modifier.padding(16.dp),
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
-            }
-        }
-
-        // Поле ввода
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { viewModel.clearRagChat() }) {
-                Icon(Icons.Default.Clear, "Очистить чат")
-            }
-
-            OutlinedTextField(
-                value = viewModel.ragInput,
-                onValueChange = { viewModel.updateRagInput(it) },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Задайте вопрос...") },
-                enabled = !uiState.isRagLoading && uiState.chunksCount > 0,
-                maxLines = 3
-            )
-
-            IconButton(
-                onClick = { viewModel.sendRagMessage() },
-                enabled = viewModel.ragInput.isNotBlank() && !uiState.isRagLoading && uiState.chunksCount > 0
-            ) {
-                Icon(Icons.Default.Send, "Отправить")
             }
         }
     }
