@@ -26,10 +26,11 @@ class DocumentParser(private val context: Context) {
             DocumentType.TXT -> content
         }
 
+        val source = "assets/$fileName"
         val document = Document(
-            id = UUID.randomUUID().toString(),
-            title = fileName.substringBeforeLast("."),
-            source = "assets/$fileName",
+            id = UUID.nameUUIDFromBytes(source.toByteArray()).toString(),
+            title = fileName,
+            source = source,
             type = type
         )
 

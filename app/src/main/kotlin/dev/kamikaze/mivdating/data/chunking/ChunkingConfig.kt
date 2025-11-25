@@ -25,7 +25,7 @@ class TextChunker(
         if (cleanedText.length <= config.chunkSize) {
             return listOf(
                 DocumentChunk(
-                    id = UUID.randomUUID().toString(),
+                    id = generateChunkId(documentId, 0),
                     documentId = documentId,
                     content = cleanedText,
                     chunkIndex = 0,
@@ -52,7 +52,7 @@ class TextChunker(
             if (chunkContent.length >= config.minChunkSize) {
                 chunks.add(
                     DocumentChunk(
-                        id = UUID.randomUUID().toString(),
+                        id = generateChunkId(documentId, chunkIndex),
                         documentId = documentId,
                         content = chunkContent,
                         chunkIndex = chunkIndex,
@@ -108,7 +108,7 @@ class TextChunker(
 
             chunks.add(
                 DocumentChunk(
-                    id = UUID.randomUUID().toString(),
+                    id = generateChunkId(documentId, chunkIndex),
                     documentId = documentId,
                     content = content,
                     chunkIndex = chunkIndex,
@@ -128,5 +128,13 @@ class TextChunker(
         return text.split(Regex("(?<=[.!?])\\s+"))
             .map { it.trim() }
             .filter { it.isNotEmpty() }
+    }
+
+    /**
+     * Генерирует детерминированный ID для чанка на основе documentId и индекса
+     */
+    private fun generateChunkId(documentId: String, chunkIndex: Int): String {
+        val idString = "$documentId:chunk:$chunkIndex"
+        return UUID.nameUUIDFromBytes(idString.toByteArray()).toString()
     }
 }

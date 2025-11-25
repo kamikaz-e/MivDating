@@ -35,12 +35,23 @@ class IndexingService(
     fun indexDocuments(fileNames: List<String>): Flow<IndexingProgress> = flow {
         try {
             var totalChunks = 0
+            var indexedDocuments = 0
 
             for (fileName in fileNames) {
                 // 1. Парсинг документа
                 emit(IndexingProgress.Parsing(fileName))
                 val (document, text) = withContext(Dispatchers.IO) {
                     documentParser.parseFromAssets(fileName)
+                }
+
+                // Проверяем, существует ли уже документ с таким ID
+                val documentExists = withContext(Dispatchers.IO) {
+                    vectorDatabase.documentExistsById(document.id)
+                }
+
+                if (documentExists) {
+                    // Пропускаем документ, если он уже проиндексирован
+                    continue
                 }
 
                 // 2. Разбиение на чанки
@@ -78,9 +89,10 @@ class IndexingService(
                 }
 
                 totalChunks += embeddings.size
+                indexedDocuments++
             }
 
-            emit(IndexingProgress.Completed(fileNames.size, totalChunks))
+            emit(IndexingProgress.Completed(indexedDocuments, totalChunks))
 
         } catch (e: Exception) {
             emit(IndexingProgress.Error(e.message ?: "Unknown error"))

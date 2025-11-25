@@ -123,13 +123,24 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                     is IndexingProgress.Completed -> {
+                        // Загружаем актуальные значения из базы
+                        val actualDocsCount = vectorDatabase.getDocumentsCount()
+                        val actualChunksCount = vectorDatabase.getEmbeddingsCount()
+                        val actualDocuments = vectorDatabase.getAllDocuments()
+
+                        val message = if (progress.totalDocuments == 0) {
+                            "✅ Все документы уже проиндексированы"
+                        } else {
+                            "✅ Готово! Добавлено: ${progress.totalDocuments} документов, ${progress.totalChunks} чанков"
+                        }
+
                         _uiState.value = _uiState.value.copy(
                             isIndexing = false,
-                            progress = "✅ Готово! ${progress.totalDocuments} документов, ${progress.totalChunks} чанков",
+                            progress = message,
                             progressPercent = 1f,
-                            documentsCount = progress.totalDocuments,
-                            chunksCount = progress.totalChunks,
-                            documents = vectorDatabase.getAllDocuments()
+                            documentsCount = actualDocsCount,
+                            chunksCount = actualChunksCount,
+                            documents = actualDocuments
                         )
                     }
                     is IndexingProgress.Error -> {

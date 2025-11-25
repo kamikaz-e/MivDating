@@ -84,7 +84,7 @@ class VectorDatabase(context: Context) : SQLiteOpenHelper(
                 put(COL_DOC_SOURCE, document.source)
                 put(COL_DOC_TYPE, document.type.name)
             },
-            SQLiteDatabase.CONFLICT_REPLACE
+            SQLiteDatabase.CONFLICT_IGNORE
         )
     }
 
@@ -107,7 +107,31 @@ class VectorDatabase(context: Context) : SQLiteOpenHelper(
                 )
             }
         }
-        return documents.distinctBy { it.title }
+        return documents
+    }
+
+    fun documentExistsByTitle(title: String): Boolean {
+        return readableDatabase.query(
+            TABLE_DOCUMENTS,
+            arrayOf(COL_DOC_ID),
+            "$COL_DOC_TITLE = ?",
+            arrayOf(title),
+            null, null, null
+        ).use { cursor ->
+            cursor.count > 0
+        }
+    }
+
+    fun documentExistsById(id: String): Boolean {
+        return readableDatabase.query(
+            TABLE_DOCUMENTS,
+            arrayOf(COL_DOC_ID),
+            "$COL_DOC_ID = ?",
+            arrayOf(id),
+            null, null, null
+        ).use { cursor ->
+            cursor.count > 0
+        }
     }
 
     // === Операции с эмбеддингами ===
