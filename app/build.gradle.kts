@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.kamikaze.cryptosy"
+    namespace = "dev.kamikaze.mivdating"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "dev.kamikaze.cryptosy"
+        applicationId = "dev.kamikaze.mivdating"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -24,6 +24,10 @@ android {
         buildConfigField("String", "MCP_BASE_URL", "\"http://10.0.2.2:8080\"")
         // Moon Phases MCP Server URL
         buildConfigField("String", "MOON_PHASES_BASE_URL", "\"http://10.0.2.2:8081\"")
+        // YandexGPT API Key
+        buildConfigField("String", "YANDEX_API_KEY", "\"AQVNxFrwOgdPSh1FSwBwKwd7Y4bCukfWaFoZWRML\"")
+        // YandexGPT Folder ID
+        buildConfigField("String", "YANDEX_FOLDER_ID", "\"b1g2tlrstcpe0emue6gs\"")
     }
 
     buildTypes {
