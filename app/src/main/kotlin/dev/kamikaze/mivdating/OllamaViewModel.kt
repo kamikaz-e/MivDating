@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import dev.kamikaze.mivdating.data.chunking.ChunkingConfig
 import dev.kamikaze.mivdating.data.indexing.IndexingProgress
 import dev.kamikaze.mivdating.data.indexing.IndexingService
+import dev.kamikaze.mivdating.data.models.Document
 import dev.kamikaze.mivdating.data.network.OllamaClient
 import dev.kamikaze.mivdating.data.parser.DocumentParser
 import dev.kamikaze.mivdating.data.storage.SearchResult
@@ -26,6 +27,7 @@ data class RAGUiState(
     val progressPercent: Float = 0f,
     val documentsCount: Int = 0,
     val chunksCount: Int = 0,
+    val documents: List<Document> = emptyList(),
     val searchResults: List<SearchResult> = emptyList(),
     val error: String? = null,
     val ollamaAvailable: Boolean = false
@@ -77,7 +79,8 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 documentsCount = vectorDatabase.getDocumentsCount(),
-                chunksCount = vectorDatabase.getEmbeddingsCount()
+                chunksCount = vectorDatabase.getEmbeddingsCount(),
+                documents = vectorDatabase.getAllDocuments()
             )
         }
     }
@@ -125,7 +128,8 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                             progress = "✅ Готово! ${progress.totalDocuments} документов, ${progress.totalChunks} чанков",
                             progressPercent = 1f,
                             documentsCount = progress.totalDocuments,
-                            chunksCount = progress.totalChunks
+                            chunksCount = progress.totalChunks,
+                            documents = vectorDatabase.getAllDocuments()
                         )
                     }
                     is IndexingProgress.Error -> {
@@ -170,6 +174,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.value = _uiState.value.copy(
                 documentsCount = 0,
                 chunksCount = 0,
+                documents = emptyList(),
                 searchResults = emptyList(),
                 progress = "Индекс очищен"
             )

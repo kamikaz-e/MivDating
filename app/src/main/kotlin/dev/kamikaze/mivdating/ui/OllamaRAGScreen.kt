@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.kamikaze.mivdating.RAGViewModel
+import dev.kamikaze.mivdating.data.models.Document
 import dev.kamikaze.mivdating.data.storage.SearchResult
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,6 +80,13 @@ fun OllamaRAGScreen(
                     documentsCount = uiState.documentsCount,
                     chunksCount = uiState.chunksCount
                 )
+            }
+
+            // Список документов
+            if (uiState.documents.isNotEmpty()) {
+                item {
+                    DocumentsList(documents = uiState.documents)
+                }
             }
 
             // Кнопка индексации
@@ -188,6 +196,42 @@ fun IndexStats(documentsCount: Int, chunksCount: Int) {
                     text = "чанков",
                     style = MaterialTheme.typography.bodySmall
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun DocumentsList(documents: List<Document>) {
+    Card {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "📚 Проиндексированные книги:",
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            documents.forEach { document ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "•",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text(
+                        text = document.title,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
         }
     }
@@ -315,14 +359,16 @@ fun SearchResultCard(result: SearchResult) {
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "📄 Chunk: ${result.chunk.chunkId.take(8)}...",
-                    style = MaterialTheme.typography.labelMedium
+                    text = "📄 ${result.documentTitle}. Chunk: ${result.chunk.chunkId.take(10)}",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = "Score: ${"%.4f".format(result.score)}",
+                    text = "%.4f".format(result.score),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )

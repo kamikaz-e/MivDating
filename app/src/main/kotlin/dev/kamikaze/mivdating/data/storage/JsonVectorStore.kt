@@ -60,12 +60,16 @@ class JsonVectorStore(private val context: Context) {
 
     fun searchSimilar(queryEmbedding: List<Double>, topK: Int = 5): List<SearchResult> {
         val index = loadIndex() ?: return emptyList()
-        
+
+        // Создаем Map documentId -> title для быстрого поиска
+        val documentTitles = index.documents.associateBy({ it.id }, { it.title })
+
         return index.embeddings
             .map { chunk ->
                 SearchResult(
                     chunk = chunk,
-                    score = cosineSimilarity(queryEmbedding, chunk.embedding)
+                    score = cosineSimilarity(queryEmbedding, chunk.embedding),
+                    documentTitle = documentTitles[chunk.documentId] ?: "Unknown"
                 )
             }
             .sortedByDescending { it.score }

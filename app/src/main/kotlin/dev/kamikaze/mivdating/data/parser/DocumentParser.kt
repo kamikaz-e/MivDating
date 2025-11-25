@@ -49,6 +49,6 @@ class DocumentParser(private val context: Context) {
         // Убираем скрипты и стили
         doc.select("script, style, nav, footer, header").remove()
         // Получаем чистый текст
-        return doc.body().text() ?: doc.text()
+        return doc.body().text()
     }
 }

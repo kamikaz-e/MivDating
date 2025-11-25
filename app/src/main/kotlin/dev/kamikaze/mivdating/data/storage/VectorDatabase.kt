@@ -107,7 +107,7 @@ class VectorDatabase(context: Context) : SQLiteOpenHelper(
                 )
             }
         }
-        return documents
+        return documents.distinctBy { it.title }
     }
 
     // === Операции с эмбеддингами ===
@@ -182,12 +182,16 @@ class VectorDatabase(context: Context) : SQLiteOpenHelper(
 
     fun searchSimilar(queryEmbedding: List<Double>, topK: Int = 5): List<SearchResult> {
         val allEmbeddings = getAllEmbeddings()
-        
+
+        // Создаем Map documentId -> title для быстрого поиска
+        val documentTitles = getAllDocuments().associateBy({ it.id }, { it.title })
+
         return allEmbeddings
             .map { chunk ->
                 SearchResult(
                     chunk = chunk,
-                    score = cosineSimilarity(queryEmbedding, chunk.embedding)
+                    score = cosineSimilarity(queryEmbedding, chunk.embedding),
+                    documentTitle = documentTitles[chunk.documentId] ?: "Unknown"
                 )
             }
             .sortedByDescending { it.score }
@@ -219,5 +223,6 @@ class VectorDatabase(context: Context) : SQLiteOpenHelper(
 
 data class SearchResult(
     val chunk: ChunkEmbedding,
-    val score: Double
+    val score: Double,
+    val documentTitle: String
 )
