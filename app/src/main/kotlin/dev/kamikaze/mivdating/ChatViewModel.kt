@@ -15,6 +15,7 @@ import dev.kamikaze.mivdating.data.network.MessageRequest
 import dev.kamikaze.mivdating.data.network.OllamaClient
 import dev.kamikaze.mivdating.data.network.YandexGptClient
 import dev.kamikaze.mivdating.data.parser.DocumentParser
+import dev.kamikaze.mivdating.data.storage.SearchResult
 import dev.kamikaze.mivdating.data.storage.VectorDatabase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +41,10 @@ data class ChatUiState(
     val isIndexing: Boolean = false,
     val indexingProgress: String = "",
     val indexingPercent: Float = 0f,
+
+    // Диалог с чанками
+    val showChunksDialog: Boolean = false,
+    val topChunks: List<SearchResult> = emptyList(),
 
     // Ошибки
     val error: String? = null
@@ -342,6 +347,37 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 indexingProgress = "Всё очищено"
             )
         }
+    }
+
+    /**
+     * Получить топ-5 чанков по запросу
+     */
+    fun getTopChunks(query: String) {
+        if (query.isBlank() || _uiState.value.chunksCount == 0) return
+
+        viewModelScope.launch {
+            try {
+                val queryEmbedding = ollamaClient.embed(query)
+                val searchResults = vectorDatabase.searchSimilar(queryEmbedding, topK = 5)
+                _uiState.value = _uiState.value.copy(
+                    topChunks = searchResults,
+                    showChunksDialog = true
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    error = "Ошибка поиска чанков: ${e.message}"
+                )
+            }
+        }
+    }
+
+    /**
+     * Закрыть диалог с чанками
+     */
+    fun closeChunksDialog() {
+        _uiState.value = _uiState.value.copy(
+            showChunksDialog = false
+        )
     }
 
     override fun onCleared() {

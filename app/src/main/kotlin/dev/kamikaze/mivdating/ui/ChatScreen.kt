@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,11 +26,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.kamikaze.mivdating.ChatViewModel
 import dev.kamikaze.mivdating.data.models.ChatMessage
+import dev.kamikaze.mivdating.data.storage.SearchResult
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,6 +101,27 @@ fun ChatScreen(
                 )
             }
 
+            // Кнопка "Показать чанки" только для RAG экрана и когда есть проиндексированные документы
+            if (selectedTab == 1 && uiState.chunksCount > 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Button(
+                        onClick = { 
+                            if (viewModel.commonInput.isNotBlank()) {
+                                viewModel.getTopChunks(viewModel.commonInput)
+                            }
+                        },
+                        enabled = viewModel.commonInput.isNotBlank() && !uiState.isRagLoading
+                    ) {
+                        Text("Показать чанки")
+                    }
+                }
+            }
+
             // Общее поле ввода для обоих экранов
             Row(
                 modifier = Modifier
@@ -105,10 +130,6 @@ fun ChatScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { viewModel.clearAll() }) {
-                    Icon(Icons.Default.Clear, "Очистить всё")
-                }
-
                 OutlinedTextField(
                     value = viewModel.commonInput,
                     onValueChange = { viewModel.updateCommonInput(it) },
@@ -317,6 +338,15 @@ fun RagScreen(
                 )
             }
         }
+
+        // Диалог с чанками
+        if (uiState.showChunksDialog) {
+            ChunksDialog(
+                chunks = uiState.topChunks,
+                documents = uiState.documents,
+                onDismiss = { viewModel.closeChunksDialog() }
+            )
+        }
     }
 }
 
@@ -358,4 +388,66 @@ fun ChatMessageItem(message: ChatMessage) {
             }
         }
     }
+}
+
+@Composable
+fun ChunksDialog(
+    chunks: List<dev.kamikaze.mivdating.data.storage.SearchResult>,
+    documents: List<dev.kamikaze.mivdating.data.models.Document>,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Топ-5 чанков") },
+        text = {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+            ) {
+                items(chunks.size) { index ->
+                    val searchResult = chunks[index]
+                    
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Чанк ${index + 1}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Документ: ${searchResult.documentTitle}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Релевантность: ${String.format("%.2f", searchResult.score)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = searchResult.chunk.content,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Закрыть")
+            }
+        }
+    )
 }
