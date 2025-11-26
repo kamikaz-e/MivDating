@@ -5,6 +5,9 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import androidx.core.database.sqlite.transaction
+import dev.kamikaze.mivdating.data.filtering.FilterConfig
+import dev.kamikaze.mivdating.data.filtering.FilteredResults
+import dev.kamikaze.mivdating.data.filtering.RelevanceFilter
 import dev.kamikaze.mivdating.data.models.ChunkEmbedding
 import dev.kamikaze.mivdating.data.models.Document
 import dev.kamikaze.mivdating.data.models.DocumentType
@@ -224,7 +227,7 @@ class VectorDatabase(context: Context) : SQLiteOpenHelper(
 
     private fun cosineSimilarity(a: List<Double>, b: List<Double>): Double {
         require(a.size == b.size) { "Vectors must have the same dimension" }
-        
+
         var dotProduct = 0.0
         var normA = 0.0
         var normB = 0.0
@@ -237,6 +240,27 @@ class VectorDatabase(context: Context) : SQLiteOpenHelper(
 
         val denominator = sqrt(normA) * sqrt(normB)
         return if (denominator == 0.0) 0.0 else dotProduct / denominator
+    }
+
+    /**
+     * Поиск с применением фильтра релевантности
+     *
+     * @param queryEmbedding Вектор запроса
+     * @param topK Максимальное количество результатов до фильтрации
+     * @param filterConfig Конфигурация фильтра
+     * @return Отфильтрованные результаты с метриками
+     */
+    fun searchSimilarWithFilter(
+        queryEmbedding: List<Double>,
+        topK: Int = 10,
+        filterConfig: FilterConfig = FilterConfig()
+    ): FilteredResults {
+        // Получаем больше результатов для фильтрации
+        val rawResults = searchSimilar(queryEmbedding, topK)
+
+        // Применяем фильтр
+        val filter = RelevanceFilter(filterConfig)
+        return filter.filter(rawResults)
     }
 
     fun clearAll() {

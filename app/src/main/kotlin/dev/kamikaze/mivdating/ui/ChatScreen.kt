@@ -1,6 +1,5 @@
 package dev.kamikaze.mivdating.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,9 +13,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -26,11 +25,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -47,7 +45,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.kamikaze.mivdating.ChatViewModel
 import dev.kamikaze.mivdating.data.models.ChatMessage
-import dev.kamikaze.mivdating.data.storage.SearchResult
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,27 +72,30 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("NO RAG") }
-                )
+            PrimaryTabRow(
+                selectedTabIndex = selectedTab,
+                modifier = Modifier
+            ) {
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
                     text = { Text("RAG") }
                 )
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("NO RAG") }
+                )
             }
 
             when (selectedTab) {
-                0 -> NoRagScreen(
-                    viewModel = viewModel, 
+                0 -> RagScreen(
+                    viewModel = viewModel,
                     uiState = uiState,
                     modifier = Modifier.weight(1f)
                 )
-                1 -> RagScreen(
-                    viewModel = viewModel, 
+
+                1 -> NoRagScreen(
                     uiState = uiState,
                     modifier = Modifier.weight(1f)
                 )
@@ -110,7 +110,7 @@ fun ChatScreen(
                     horizontalArrangement = Arrangement.Center
                 ) {
                     Button(
-                        onClick = { 
+                        onClick = {
                             if (viewModel.commonInput.isNotBlank()) {
                                 viewModel.getTopChunks(viewModel.commonInput)
                             }
@@ -152,7 +152,6 @@ fun ChatScreen(
 
 @Composable
 fun NoRagScreen(
-    viewModel: ChatViewModel,
     uiState: dev.kamikaze.mivdating.ChatUiState,
     modifier: Modifier = Modifier
 ) {
@@ -408,7 +407,7 @@ fun ChunksDialog(
             ) {
                 items(chunks.size) { index ->
                     val searchResult = chunks[index]
-                    
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
@@ -430,7 +429,12 @@ fun ChunksDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "Релевантность: ${String.format("%.2f", searchResult.score)}",
+                                text = "Релевантность: ${
+                                    String.format(
+                                        "%.2f",
+                                        searchResult.score
+                                    )
+                                }",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )

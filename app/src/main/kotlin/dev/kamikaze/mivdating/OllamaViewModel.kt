@@ -8,6 +8,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.kamikaze.mivdating.data.chunking.ChunkingConfig
+import dev.kamikaze.mivdating.data.filtering.FilterConfig
+import dev.kamikaze.mivdating.data.filtering.FilteredResults
 import dev.kamikaze.mivdating.data.indexing.IndexingProgress
 import dev.kamikaze.mivdating.data.indexing.IndexingService
 import dev.kamikaze.mivdating.data.models.Document
@@ -28,7 +30,21 @@ data class RAGUiState(
     val documentsCount: Int = 0,
     val chunksCount: Int = 0,
     val documents: List<Document> = emptyList(),
+
+    // Результаты без фильтрации
     val searchResults: List<SearchResult> = emptyList(),
+
+    // Результаты с фильтрацией
+    val filteredResults: FilteredResults? = null,
+
+    // Настройки фильтра
+    val filterThreshold: Float = 0.5f,
+    val useFilter: Boolean = false,
+    val useLengthBoost: Boolean = false,
+
+    // Режим сравнения
+    val comparisonMode: Boolean = false,
+
     val error: String? = null,
     val ollamaAvailable: Boolean = false
 )
@@ -97,8 +113,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
             )
 
             // Файлы книг в assets
-            val files = listOf("book1.txt", "book2.html")
-
+            val files = listOf("book1.txt", "book2.html", "android_book_1.html", "android_book_2.html")
             indexingService.indexDocuments(files).collect { progress ->
                 when (progress) {
                     is IndexingProgress.Parsing -> {
@@ -165,11 +180,21 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
             )
 
             try {
-                val results = indexingService.search(searchQuery, topK = 5)
-                _uiState.value = _uiState.value.copy(
-                    isSearching = false,
-                    searchResults = results
-                )
+                if (_uiState.value.comparisonMode) {
+                    // В режиме сравнения получаем оба результата
+                    searchBoth()
+                } else if (_uiState.value.useFilter) {
+                    // Только с фильтром
+                    searchWithFilter()
+                } else {
+                    // Только без фильтра
+                    val results = indexingService.search(searchQuery, topK = 10)
+                    _uiState.value = _uiState.value.copy(
+                        isSearching = false,
+                        searchResults = results,
+                        filteredResults = null
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isSearching = false,
@@ -177,6 +202,69 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+    }
+
+    private suspend fun searchWithFilter() {
+        val filterConfig = FilterConfig(
+            minScoreThreshold = _uiState.value.filterThreshold.toDouble(),
+            useLengthBoost = _uiState.value.useLengthBoost,
+            maxResults = 5
+        )
+
+        val filtered = indexingService.searchWithFilter(
+            query = searchQuery,
+            topK = 10,
+            filterConfig = filterConfig
+        )
+
+        _uiState.value = _uiState.value.copy(
+            isSearching = false,
+            filteredResults = filtered,
+            searchResults = emptyList()
+        )
+    }
+
+    private suspend fun searchBoth() {
+        // Поиск без фильтра
+        val rawResults = indexingService.search(searchQuery, topK = 10)
+
+        // Поиск с фильтром
+        val filterConfig = FilterConfig(
+            minScoreThreshold = _uiState.value.filterThreshold.toDouble(),
+            useLengthBoost = _uiState.value.useLengthBoost,
+            maxResults = 5
+        )
+        val filtered = indexingService.searchWithFilter(
+            query = searchQuery,
+            topK = 10,
+            filterConfig = filterConfig
+        )
+
+        _uiState.value = _uiState.value.copy(
+            isSearching = false,
+            searchResults = rawResults,
+            filteredResults = filtered
+        )
+    }
+
+    // Управление настройками фильтра
+    fun updateFilterThreshold(threshold: Float) {
+        _uiState.value = _uiState.value.copy(filterThreshold = threshold)
+    }
+
+    fun toggleFilter() {
+        _uiState.value = _uiState.value.copy(useFilter = !_uiState.value.useFilter)
+    }
+
+    fun toggleLengthBoost() {
+        _uiState.value = _uiState.value.copy(useLengthBoost = !_uiState.value.useLengthBoost)
+    }
+
+    fun toggleComparisonMode() {
+        _uiState.value = _uiState.value.copy(
+            comparisonMode = !_uiState.value.comparisonMode,
+            useFilter = false  // Сбрасываем при включении сравнения
+        )
     }
 
     fun clearIndex() {

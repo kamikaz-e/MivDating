@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,14 +18,17 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -32,10 +36,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.kamikaze.mivdating.RAGViewModel
+import dev.kamikaze.mivdating.data.filtering.FilteredResults
 import dev.kamikaze.mivdating.data.models.Document
 import dev.kamikaze.mivdating.data.storage.SearchResult
 
@@ -110,6 +116,22 @@ fun OllamaRAGScreen(
                 )
             }
 
+            // Настройки фильтра
+            if (uiState.chunksCount > 0) {
+                item {
+                    FilterSettingsSection(
+                        threshold = uiState.filterThreshold,
+                        onThresholdChange = { viewModel.updateFilterThreshold(it) },
+                        useFilter = uiState.useFilter,
+                        onToggleFilter = { viewModel.toggleFilter() },
+                        useLengthBoost = uiState.useLengthBoost,
+                        onToggleLengthBoost = { viewModel.toggleLengthBoost() },
+                        comparisonMode = uiState.comparisonMode,
+                        onToggleComparison = { viewModel.toggleComparisonMode() }
+                    )
+                }
+            }
+
             // Ошибки
             uiState.error?.let { error ->
                 item {
@@ -127,11 +149,29 @@ fun OllamaRAGScreen(
                 }
             }
 
-            // Результаты поиска
-            if (uiState.searchResults.isNotEmpty()) {
+            // Результаты в режиме сравнения
+            uiState.filteredResults?.let { filtered ->
+                if (uiState.comparisonMode) {
+                    item {
+                        ComparisonResultsSection(
+                            rawResults = uiState.searchResults,
+                            filteredResults = filtered
+                        )
+                    }
+                }
+                // Результаты с фильтром
+                else {
+                    item {
+                        FilteredResultsSection(filteredResults = filtered)
+                    }
+                }
+            }
+
+            // Результаты без фильтра
+            if (uiState.searchResults.isNotEmpty() && uiState.filteredResults == null) {
                 item {
                     Text(
-                        "Результаты поиска:",
+                        "Результаты поиска (без фильтра):",
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
@@ -363,7 +403,7 @@ fun SearchResultCard(result: SearchResult) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "📄 ${result.documentTitle}. Chunk: ${result.chunk.chunkId.take(10)}",
+                    text = "📄 ${result.documentTitle}",
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f)
                 )
@@ -381,5 +421,215 @@ fun SearchResultCard(result: SearchResult) {
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+@Composable
+fun FilterSettingsSection(
+    threshold: Float,
+    onThresholdChange: (Float) -> Unit,
+    useFilter: Boolean,
+    onToggleFilter: () -> Unit,
+    useLengthBoost: Boolean,
+    onToggleLengthBoost: () -> Unit,
+    comparisonMode: Boolean,
+    onToggleComparison: () -> Unit
+) {
+    Card {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "⚙️ Настройки фильтра релевантности",
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            // Порог фильтрации
+            Column {
+                Text(
+                    "Минимальный порог похожести: %.2f".format(threshold),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Slider(
+                    value = threshold,
+                    onValueChange = onThresholdChange,
+                    valueRange = 0f..1f,
+                    steps = 19
+                )
+            }
+
+            HorizontalDivider()
+
+            // Опции
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = useFilter,
+                    onCheckedChange = { onToggleFilter() },
+                    enabled = !comparisonMode
+                )
+                Text(
+                    "Использовать фильтр",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = useLengthBoost,
+                    onCheckedChange = { onToggleLengthBoost() }
+                )
+                Text(
+                    "Reranking по длине контента",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = comparisonMode,
+                    onCheckedChange = { onToggleComparison() }
+                )
+                Text(
+                    "Режим сравнения (с фильтром и без)",
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun FilteredResultsSection(filteredResults: FilteredResults) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "📊 Результаты с фильтром",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("Исходных: ${filteredResults.originalCount}", style = MaterialTheme.typography.bodySmall)
+                    Text("После фильтра: ${filteredResults.finalCount}", style = MaterialTheme.typography.bodySmall)
+                }
+                Column {
+                    Text("Средний score: %.3f".format(filteredResults.avgScore), style = MaterialTheme.typography.bodySmall)
+                    Text("Порог: %.2f".format(filteredResults.appliedThreshold), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    filteredResults.results.forEach { result ->
+        SearchResultCard(result = result)
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+fun ComparisonResultsSection(
+    rawResults: List<SearchResult>,
+    filteredResults: FilteredResults
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "🔬 Сравнение результатов",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("БЕЗ ФИЛЬТРА", style = MaterialTheme.typography.labelLarge)
+                    Text("${rawResults.size}", style = MaterialTheme.typography.headlineMedium)
+                    Text("результатов", style = MaterialTheme.typography.bodySmall)
+                }
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("С ФИЛЬТРОМ", style = MaterialTheme.typography.labelLarge)
+                    Text("${filteredResults.finalCount}", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+                    Text("результатов", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            HorizontalDivider()
+
+            Text(
+                "Статистика фильтрации:",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text("• Отфильтровано: ${filteredResults.originalCount - filteredResults.finalCount} результатов")
+            Text("• Средний score (с фильтром): %.3f".format(filteredResults.avgScore))
+            Text("• Примененный порог: %.2f".format(filteredResults.appliedThreshold))
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+
+    // Результаты без фильтра
+    Text(
+        "Без фильтра (${rawResults.size} результатов):",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold
+    )
+    rawResults.forEach { result ->
+        SearchResultCard(result = result)
+        Spacer(Modifier.height(8.dp))
+    }
+
+    Spacer(Modifier.height(16.dp))
+
+    // Результаты с фильтром
+    Text(
+        "С фильтром (${filteredResults.finalCount} результатов):",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary
+    )
+    filteredResults.results.forEach { result ->
+        SearchResultCard(result = result)
+        Spacer(Modifier.height(8.dp))
     }
 }

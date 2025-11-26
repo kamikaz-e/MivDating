@@ -3,9 +3,12 @@ package dev.kamikaze.mivdating.data.indexing
 
 import dev.kamikaze.mivdating.data.chunking.ChunkingConfig
 import dev.kamikaze.mivdating.data.chunking.TextChunker
+import dev.kamikaze.mivdating.data.filtering.FilterConfig
+import dev.kamikaze.mivdating.data.filtering.FilteredResults
 import dev.kamikaze.mivdating.data.models.ChunkEmbedding
 import dev.kamikaze.mivdating.data.network.OllamaClient
 import dev.kamikaze.mivdating.data.parser.DocumentParser
+import dev.kamikaze.mivdating.data.storage.SearchResult
 import dev.kamikaze.mivdating.data.storage.VectorDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -100,10 +103,27 @@ class IndexingService(
     }
 
     /**
-     * Поиск по запросу
+     * Поиск по запросу без фильтрации
      */
-    suspend fun search(query: String, topK: Int = 5) = withContext(Dispatchers.IO) {
+    suspend fun search(query: String, topK: Int = 5): List<SearchResult> = withContext(Dispatchers.IO) {
         val queryEmbedding = ollamaClient.embed(query)
         vectorDatabase.searchSimilar(queryEmbedding, topK)
+    }
+
+    /**
+     * Поиск по запросу с применением фильтра релевантности
+     *
+     * @param query Поисковый запрос
+     * @param topK Количество результатов для начального поиска (до фильтрации)
+     * @param filterConfig Конфигурация фильтра
+     * @return Отфильтрованные результаты с метриками
+     */
+    suspend fun searchWithFilter(
+        query: String,
+        topK: Int = 10,
+        filterConfig: FilterConfig = FilterConfig()
+    ): FilteredResults = withContext(Dispatchers.IO) {
+        val queryEmbedding = ollamaClient.embed(query)
+        vectorDatabase.searchSimilarWithFilter(queryEmbedding, topK, filterConfig)
     }
 }

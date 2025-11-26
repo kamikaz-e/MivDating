@@ -7,7 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
-import dev.kamikaze.mivdating.ui.ChatScreen
+import dev.kamikaze.mivdating.ui.OllamaRAGScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -17,7 +17,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                ChatScreen(modifier = Modifier.fillMaxSize())
+                OllamaRAGScreen(modifier = Modifier.fillMaxSize())
             }
         }
     }

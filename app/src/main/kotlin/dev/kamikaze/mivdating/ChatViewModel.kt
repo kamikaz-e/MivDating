@@ -275,7 +275,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 indexingProgress = "Начинаем индексацию..."
             )
 
-            val files = listOf("book1.txt", "book2.html")
+            val files = listOf("book1.txt", "book2.html", "android_book_1.html", "android_book_2.html")
 
             indexingService.indexDocuments(files).collect { progress ->
                 when (progress) {
