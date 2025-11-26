@@ -43,6 +43,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.kamikaze.mivdating.RAGViewModel
 import dev.kamikaze.mivdating.data.filtering.FilteredResults
 import dev.kamikaze.mivdating.data.models.Document
+import dev.kamikaze.mivdating.data.network.ApiResponse
 import dev.kamikaze.mivdating.data.storage.SearchResult
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,6 +104,30 @@ fun OllamaRAGScreen(
                     progressPercent = uiState.progressPercent,
                     onIndexClick = { viewModel.indexBooks() }
                 )
+            }
+
+            // RAG Question Section
+            if (uiState.chunksCount > 0) {
+                item {
+                    RagQuestionSection(
+                        question = uiState.ragQuestion,
+                        onQuestionChange = { viewModel.updateRagQuestion(it) },
+                        onAsk = { viewModel.askQuestionWithRAG() },
+                        isGenerating = uiState.isGenerating,
+                        isEnabled = uiState.chunksCount > 0
+                    )
+                }
+            }
+
+            // Ответ LLM с RAG
+            uiState.ragAnswer?.let { answer ->
+                item {
+                    RagAnswerSection(
+                        answer = answer,
+                        usedChunks = uiState.usedChunks,
+                        onClear = { viewModel.clearRagResults() }
+                    )
+                }
             }
 
             // Поиск
@@ -379,6 +404,186 @@ fun SearchSection(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun RagQuestionSection(
+    question: String,
+    onQuestionChange: (String) -> Unit,
+    onAsk: () -> Unit,
+    isGenerating: Boolean,
+    isEnabled: Boolean
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "🤖 Вопрос с RAG",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                "Задайте вопрос по проиндексированным документам. Система найдет релевантные чанки и отправит их в LLM для формирования ответа.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+            )
+
+            OutlinedTextField(
+                value = question,
+                onValueChange = onQuestionChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Например: Кто главный герой книги?") },
+                enabled = isEnabled && !isGenerating,
+                minLines = 2,
+                maxLines = 4
+            )
+
+            Button(
+                onClick = onAsk,
+                enabled = isEnabled && question.isNotBlank() && !isGenerating,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isGenerating) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(if (isGenerating) "Генерация ответа..." else "🚀 Задать вопрос с RAG")
+            }
+
+            if (!isEnabled) {
+                Text(
+                    "Сначала проиндексируйте документы",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RagAnswerSection(
+    answer: ApiResponse,
+    usedChunks: List<SearchResult>,
+    onClear: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "💬 Ответ LLM",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onClear) {
+                    Icon(Icons.Default.Delete, "Очистить")
+                }
+            }
+
+            // Ответ
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Text(
+                    text = answer.text,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            // Статистика токенов
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "📊 Токены: ${answer.tokens.totalTokens}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "Input: ${answer.tokens.inputTokens} | Output: ${answer.tokens.outputTokens}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            HorizontalDivider()
+
+            // Использованные чанки
+            Text(
+                "📚 Использовано чанков: ${usedChunks.size}",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+
+            usedChunks.forEach { chunk ->
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "📄 ${chunk.documentTitle}",
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                "%.3f".format(chunk.score),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Text(
+                            chunk.chunk.content,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+                    }
+                }
             }
         }
     }

@@ -13,7 +13,9 @@ import dev.kamikaze.mivdating.data.filtering.FilteredResults
 import dev.kamikaze.mivdating.data.indexing.IndexingProgress
 import dev.kamikaze.mivdating.data.indexing.IndexingService
 import dev.kamikaze.mivdating.data.models.Document
+import dev.kamikaze.mivdating.data.network.ApiResponse
 import dev.kamikaze.mivdating.data.network.OllamaClient
+import dev.kamikaze.mivdating.data.network.YandexGptClient
 import dev.kamikaze.mivdating.data.parser.DocumentParser
 import dev.kamikaze.mivdating.data.storage.SearchResult
 import dev.kamikaze.mivdating.data.storage.VectorDatabase
@@ -45,6 +47,12 @@ data class RAGUiState(
     // Режим сравнения
     val comparisonMode: Boolean = false,
 
+    // RAG функциональность
+    val ragQuestion: String = "",
+    val isGenerating: Boolean = false,
+    val ragAnswer: ApiResponse? = null,
+    val usedChunks: List<SearchResult> = emptyList(),
+
     val error: String? = null,
     val ollamaAvailable: Boolean = false
 )
@@ -71,6 +79,8 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
     var searchQuery by mutableStateOf("")
         private set
 
+    private val yandexGptClient = YandexGptClient
+
     init {
         checkOllamaConnection()
         loadStats()
@@ -78,6 +88,10 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateSearchQuery(query: String) {
         searchQuery = query
+    }
+
+    fun updateRagQuestion(question: String) {
+        _uiState.value = _uiState.value.copy(ragQuestion = question)
     }
 
     private fun checkOllamaConnection() {
@@ -264,6 +278,81 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(
             comparisonMode = !_uiState.value.comparisonMode,
             useFilter = false  // Сбрасываем при включении сравнения
+        )
+    }
+
+    /**
+     * Задать вопрос с использованием RAG
+     */
+    fun askQuestionWithRAG() {
+        val question = _uiState.value.ragQuestion
+        if (question.isBlank()) return
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isGenerating = true,
+                error = null,
+                ragAnswer = null,
+                usedChunks = emptyList()
+            )
+
+            try {
+                // Шаг 1: Выполнить семантический поиск
+                val chunks = if (_uiState.value.useFilter) {
+                    // Поиск с фильтром
+                    val filterConfig = FilterConfig(
+                        minScoreThreshold = _uiState.value.filterThreshold.toDouble(),
+                        useLengthBoost = _uiState.value.useLengthBoost,
+                        maxResults = 5
+                    )
+                    val filtered = indexingService.searchWithFilter(
+                        query = question,
+                        topK = 10,
+                        filterConfig = filterConfig
+                    )
+                    filtered.results
+                } else {
+                    // Обычный поиск
+                    indexingService.search(question, topK = 5)
+                }
+
+                // Шаг 2: Собрать контекст из найденных чанков
+                val context = chunks.joinToString("\n\n") { chunk ->
+                    "Документ: ${chunk.documentTitle}\n" +
+                    "Релевантность: ${String.format("%.3f", chunk.score)}\n" +
+                    "Текст: ${chunk.chunk.content}"
+                }
+
+                // Шаг 3: Отправить запрос в Yandex GPT с контекстом
+                val answer = yandexGptClient.sendMessageWithContext(
+                    userMessage = question,
+                    context = context
+                )
+
+                // Шаг 4: Сохранить результат
+                _uiState.value = _uiState.value.copy(
+                    isGenerating = false,
+                    ragAnswer = answer,
+                    usedChunks = chunks
+                )
+
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isGenerating = false,
+                    error = "Ошибка RAG запроса: ${e.message}"
+                )
+            }
+        }
+    }
+
+    /**
+     * Очистить RAG результаты
+     */
+    fun clearRagResults() {
+        _uiState.value = _uiState.value.copy(
+            ragAnswer = null,
+            usedChunks = emptyList(),
+            ragQuestion = ""
         )
     }
 
