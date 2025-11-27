@@ -46,6 +46,10 @@ data class ChatUiState(
     val showChunksDialog: Boolean = false,
     val topChunks: List<SearchResult> = emptyList(),
 
+    // Диалог с одним чанком (при клике на источник)
+    val showSourceDialog: Boolean = false,
+    val selectedSource: SearchResult? = null,
+
     // Ошибки
     val error: String? = null
 )
@@ -204,10 +208,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val queryEmbedding = ollamaClient.embed(userMessage)
                 val searchResults = vectorDatabase.searchSimilar(queryEmbedding, topK = 5)
 
-                // 2. Формирование контекста из чанков
-                val context =  userMessage + searchResults.joinToString("\n") { result ->
-                    result.chunk.content
-                }
+                // 2. Формирование контекста из чанков с нумерацией
+                val context = searchResults.mapIndexed { index, result ->
+                    "Источник ${index + 1} (${result.documentTitle}, релевантность: ${String.format("%.2f", result.score)}):\n${result.chunk.content}"
+                }.joinToString("\n\n")
 
                 // 3. Формируем историю для API
                 val history = _uiState.value.ragMessages
@@ -229,7 +233,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val assistantMessage = ChatMessage(
                     id = UUID.randomUUID().toString(),
                     text = response.text,
-                    isUser = false
+                    isUser = false,
+                    sources = searchResults // Сохраняем чанки-источники
                 )
 
                 _uiState.value = _uiState.value.copy(
@@ -377,6 +382,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun closeChunksDialog() {
         _uiState.value = _uiState.value.copy(
             showChunksDialog = false
+        )
+    }
+
+    /**
+     * Показать диалог с источником (при клике на [Источник N])
+     */
+    fun showSourceDialog(source: SearchResult) {
+        _uiState.value = _uiState.value.copy(
+            selectedSource = source,
+            showSourceDialog = true
+        )
+    }
+
+    /**
+     * Закрыть диалог с источником
+     */
+    fun closeSourceDialog() {
+        _uiState.value = _uiState.value.copy(
+            showSourceDialog = false,
+            selectedSource = null
         )
     }
 

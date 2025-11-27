@@ -53,6 +53,10 @@ data class RAGUiState(
     val ragAnswer: ApiResponse? = null,
     val usedChunks: List<SearchResult> = emptyList(),
 
+    // Диалог с источником
+    val showSourceDialog: Boolean = false,
+    val selectedSource: SearchResult? = null,
+
     val error: String? = null,
     val ollamaAvailable: Boolean = false
 )
@@ -316,12 +320,14 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                     indexingService.search(question, topK = 5)
                 }
 
-                // Шаг 2: Собрать контекст из найденных чанков
-                val context = chunks.joinToString("\n\n") { chunk ->
+                // Шаг 2: Собрать контекст из найденных чанков с нумерацией
+                val context = chunks.mapIndexed { index, chunk ->
+                    val sourceNum = index + 1
+                    "[Источник $sourceNum]\n" +
                     "Документ: ${chunk.documentTitle}\n" +
                     "Релевантность: ${String.format("%.3f", chunk.score)}\n" +
                     "Текст: ${chunk.chunk.content}"
-                }
+                }.joinToString("\n\n")
 
                 // Шаг 3: Отправить запрос в Yandex GPT с контекстом
                 val answer = yandexGptClient.sendMessageWithContext(
@@ -353,6 +359,26 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
             ragAnswer = null,
             usedChunks = emptyList(),
             ragQuestion = ""
+        )
+    }
+
+    /**
+     * Показать диалог с источником
+     */
+    fun showSourceDialog(source: SearchResult) {
+        _uiState.value = _uiState.value.copy(
+            selectedSource = source,
+            showSourceDialog = true
+        )
+    }
+
+    /**
+     * Закрыть диалог с источником
+     */
+    fun closeSourceDialog() {
+        _uiState.value = _uiState.value.copy(
+            showSourceDialog = false,
+            selectedSource = null
         )
     }
 

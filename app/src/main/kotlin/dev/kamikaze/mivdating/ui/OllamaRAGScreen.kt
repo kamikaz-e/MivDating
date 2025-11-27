@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,14 +32,21 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.kamikaze.mivdating.RAGViewModel
@@ -125,7 +134,8 @@ fun OllamaRAGScreen(
                     RagAnswerSection(
                         answer = answer,
                         usedChunks = uiState.usedChunks,
-                        onClear = { viewModel.clearRagResults() }
+                        onClear = { viewModel.clearRagResults() },
+                        onSourceClick = { source -> viewModel.showSourceDialog(source) }
                     )
                 }
             }
@@ -204,6 +214,16 @@ fun OllamaRAGScreen(
                 items(uiState.searchResults) { result ->
                     SearchResultCard(result = result)
                 }
+            }
+        }
+
+        // Диалог с источником (вне LazyColumn)
+        uiState.selectedSource?.let { source ->
+            if (uiState.showSourceDialog) {
+                SourceDialog(
+                    source = source,
+                    onDismiss = { viewModel.closeSourceDialog() }
+                )
             }
         }
     }
@@ -477,11 +497,87 @@ fun RagQuestionSection(
     }
 }
 
+// Функция для создания кликабельного текста с источниками
+@Composable
+fun ClickableSourceText(
+    text: String,
+    sources: List<SearchResult>,
+    onSourceClick: (SearchResult) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+
+    // Регулярное выражение для поиска [Источник N]
+    val sourcePattern = Regex("""\[Источник (\d+)\]""")
+
+    val annotatedString = remember(text, sources, primaryColor) {
+        buildAnnotatedString {
+            var lastIndex = 0
+
+            sourcePattern.findAll(text).forEach { matchResult ->
+                // Добавляем текст до совпадения
+                append(text.substring(lastIndex, matchResult.range.first))
+
+                // Извлекаем номер источника
+                val sourceNumber = matchResult.groupValues[1].toIntOrNull() ?: 1
+                val sourceIndex = sourceNumber - 1
+
+                // Добавляем кликабельный источник
+                if (sourceIndex in sources.indices) {
+                    pushStringAnnotation(
+                        tag = "SOURCE",
+                        annotation = sourceIndex.toString()
+                    )
+                    withStyle(
+                        style = SpanStyle(
+                            color = primaryColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    ) {
+                        append(matchResult.value)
+                    }
+                    pop()
+                } else {
+                    append(matchResult.value)
+                }
+
+                lastIndex = matchResult.range.last + 1
+            }
+
+            // Добавляем оставшийся текст
+            if (lastIndex < text.length) {
+                append(text.substring(lastIndex))
+            }
+        }
+    }
+
+    ClickableText(
+        text = annotatedString,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = modifier,
+        onClick = { offset ->
+            annotatedString.getStringAnnotations(
+                tag = "SOURCE",
+                start = 0,
+                end = annotatedString.length
+            ).firstOrNull { annotation ->
+                offset in annotation.start..annotation.end
+            }?.let { annotation ->
+                val sourceIndex = annotation.item.toIntOrNull() ?: 0
+                if (sourceIndex >= 0 && sourceIndex < sources.size) {
+                    onSourceClick(sources[sourceIndex])
+                }
+            }
+        }
+    )
+}
+
 @Composable
 fun RagAnswerSection(
     answer: ApiResponse,
     usedChunks: List<SearchResult>,
-    onClear: () -> Unit
+    onClear: () -> Unit,
+    onSourceClick: (SearchResult) -> Unit = {}
 ) {
     Card(
         colors = CardDefaults.cardColors(
@@ -500,7 +596,7 @@ fun RagAnswerSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "💬 Ответ LLM",
+                    "💬 Ответ LLM с источниками",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -509,19 +605,47 @@ fun RagAnswerSection(
                 }
             }
 
-            // Ответ
+            // Ответ с кликабельными источниками
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             ) {
-                Text(
+                ClickableSourceText(
                     text = answer.text,
+                    sources = usedChunks,
+                    onSourceClick = onSourceClick,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
-                    style = MaterialTheme.typography.bodyMedium
+                        .padding(12.dp)
                 )
+            }
+
+            // Проверка наличия источников в ответе
+            val hasSourceReferences = answer.text.contains(Regex("\\[Источник \\d+"))
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (hasSourceReferences)
+                        MaterialTheme.colorScheme.primaryContainer
+                    else
+                        MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        if (hasSourceReferences)
+                            "✓ Ответ содержит ссылки на источники"
+                        else
+                            "⚠ Ответ БЕЗ ссылок на источники (возможна галлюцинация)",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             // Статистика токенов
@@ -837,4 +961,67 @@ fun ComparisonResultsSection(
         SearchResultCard(result = result)
         Spacer(Modifier.height(8.dp))
     }
+}
+
+@Composable
+fun SourceDialog(
+    source: SearchResult,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Источник") },
+        text = {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Документ",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = source.documentTitle,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Релевантность",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        text = String.format("%.2f%%", source.score * 100),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Text(
+                        text = "Содержимое чанка",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        text = source.chunk.content,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Закрыть")
+            }
+        }
+    )
 }

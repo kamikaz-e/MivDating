@@ -20,8 +20,8 @@ import kotlinx.serialization.json.Json
 
 object YandexGptClient : AutoCloseable {
 
-    private val apiKey: String = BuildConfig.YANDEX_API_KEY
-    private val folderId: String = BuildConfig.YANDEX_FOLDER_ID
+    private const val API_KEY: String = BuildConfig.YANDEX_API_KEY
+    private const val FOLDER_ID: String = BuildConfig.YANDEX_FOLDER_ID
 
     private val client = HttpClient(Android) {
         install(ContentNegotiation) {
@@ -51,12 +51,12 @@ object YandexGptClient : AutoCloseable {
     ): ApiResponse {
         return try {
             val response = client.post("https://llm.api.cloud.yandex.net/foundationModels/v1/completion") {
-                header("Authorization", "Api-Key $apiKey")
-                header("x-folder-id", folderId)
+                header("Authorization", "Api-Key $API_KEY")
+                header("x-folder-id", FOLDER_ID)
                 contentType(ContentType.Application.Json)
                 setBody(
                     MessageRequest(
-                        modelUri = "gpt://$folderId/yandexgpt/latest",
+                        modelUri = "gpt://$FOLDER_ID/yandexgpt/latest",
                         completionOptions = CompletionOptions(temperature = 0.3f),
                         messages = listOf(
                             Message(
@@ -104,25 +104,39 @@ object YandexGptClient : AutoCloseable {
     ): ApiResponse {
         return try {
             val systemPrompt = """
-                Ты — AI-ассистент, который отвечает на вопросы на основе предоставленного контекста.
+                Ты — AI-ассистент, который отвечает на вопросы СТРОГО на основе предоставленного контекста из документов.
 
                 КОНТЕКСТ ИЗ ДОКУМЕНТОВ:
                 $context
 
-                ИНСТРУКЦИИ:
-                - Отвечай ТОЛЬКО на основе предоставленного контекста
-                - Если в контексте нет информации для ответа, так и скажи
-                - Будь точным и конкретным
-                - Цитируй релевантные части контекста при необходимости
+                ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ОТВЕТА:
+                1. Отвечай ТОЛЬКО на основе предоставленного контекста
+                2. ОБЯЗАТЕЛЬНО указывай источник для КАЖДОГО факта в формате [Источник N]
+                3. Если используешь информацию из нескольких источников, указывай все: [Источник 1, Источник 2]
+                4. Если в контексте нет информации для ответа, четко напиши: "В предоставленных документах нет информации об этом"
+                5. НЕ добавляй информацию, которой нет в контексте
+                6. Цитируй точные фразы из контекста в кавычках, с указанием источника
+
+                ФОРМАТ ОТВЕТА:
+                - Основной ответ с фактами
+                - После каждого факта: [Источник N]
+                - В конце: список всех использованных источников
+
+                ПРИМЕР:
+                Главный герой книги — Иван Петров [Источник 1]. Он работает врачом в городской больнице [Источник 1]. События происходят в Москве зимой 1995 года [Источник 2].
+
+                Использованные источники:
+                - Источник 1: book1.txt (релевантность: 0.85)
+                - Источник 2: book2.html (релевантность: 0.78)
             """.trimIndent()
 
             val response = client.post("https://llm.api.cloud.yandex.net/foundationModels/v1/completion") {
-                header("Authorization", "Api-Key $apiKey")
-                header("x-folder-id", folderId)
+                header("Authorization", "Api-Key $API_KEY")
+                header("x-folder-id", FOLDER_ID)
                 contentType(ContentType.Application.Json)
                 setBody(
                     MessageRequest(
-                        modelUri = "gpt://$folderId/yandexgpt/latest",
+                        modelUri = "gpt://$FOLDER_ID/yandexgpt/latest",
                         completionOptions = CompletionOptions(temperature = 0.3f),
                         messages = listOf(
                             Message(role = "system", text = systemPrompt)
