@@ -35,7 +35,6 @@ class ChatHistoryRepository(private val context: Context) {
     suspend fun saveChatHistory(messages: List<ChatMessage>) {
         val serializable = messages.map { it.toSerializable() }
         val jsonString = json.encodeToString(serializable)
-
         context.dataStore.edit { preferences ->
             preferences[CHAT_HISTORY_KEY] = jsonString
         }
@@ -49,7 +48,14 @@ class ChatHistoryRepository(private val context: Context) {
             val jsonString = preferences[CHAT_HISTORY_KEY] ?: return@map emptyList()
             try {
                 val serializable = json.decodeFromString<List<SerializableChatMessage>>(jsonString)
-                serializable.map { it.toChatMessage() }
+                val messages = serializable.map { it.toChatMessage() }
+
+                // Логируем сколько источников загрузили
+                messages.forEach { msg ->
+                    if (!msg.isUser) {
+                    }
+                }
+                messages
             } catch (e: Exception) {
                 emptyList()
             }

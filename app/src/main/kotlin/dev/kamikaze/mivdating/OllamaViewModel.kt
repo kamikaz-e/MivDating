@@ -1,4 +1,3 @@
-// viewmodel/RAGViewModel.kt
 package dev.kamikaze.mivdating
 
 import android.app.Application
@@ -89,6 +88,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
         checkOllamaConnection()
         loadChunksAndVectors()
         loadChatHistory()
+        autoIndexIfNeeded()
     }
 
     fun updateSearchQuery(query: String) {
@@ -117,6 +117,19 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                 chunksCount = vectorDatabase.getEmbeddingsCount(),
                 documents = vectorDatabase.getAllDocuments()
             )
+        }
+    }
+
+    /**
+     * Автоматически запускает индексацию, если документы ещё не проиндексированы
+     */
+    private fun autoIndexIfNeeded() {
+        viewModelScope.launch {
+            // Проверяем, есть ли уже проиндексированные документы
+            val documentsCount = vectorDatabase.getDocumentsCount()
+            if (documentsCount == 0) {
+                indexBooks()
+            }
         }
     }
 
@@ -163,7 +176,8 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
             )
 
             // Файлы книг в assets
-            val files = listOf("book1.txt", "book2.html", "android_book_1.html", "android_book_2.html")
+            val files =
+                listOf("book1.txt", "book2.html", "android_book_1.html", "android_book_2.html")
             indexingService.indexDocuments(files).collect { progress ->
                 when (progress) {
                     is IndexingProgress.Parsing -> {
@@ -171,22 +185,26 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                             progress = "📖 Парсинг: ${progress.fileName}"
                         )
                     }
+
                     is IndexingProgress.Chunking -> {
                         _uiState.value = _uiState.value.copy(
                             progress = "✂️ Разбивка: ${progress.chunksCount} чанков"
                         )
                     }
+
                     is IndexingProgress.Embedding -> {
                         _uiState.value = _uiState.value.copy(
                             progress = "🧠 Эмбеддинг: ${progress.current}/${progress.total}",
                             progressPercent = progress.current.toFloat() / progress.total
                         )
                     }
+
                     is IndexingProgress.Saving -> {
                         _uiState.value = _uiState.value.copy(
                             progress = "💾 Сохранение ${progress.chunksCount} векторов..."
                         )
                     }
+
                     is IndexingProgress.Completed -> {
                         // Загружаем актуальные значения из базы
                         val actualDocsCount = vectorDatabase.getDocumentsCount()
@@ -208,6 +226,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                             documents = actualDocuments
                         )
                     }
+
                     is IndexingProgress.Error -> {
                         _uiState.value = _uiState.value.copy(
                             isIndexing = false,
@@ -361,9 +380,9 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                 val context = chunks.mapIndexed { index, chunk ->
                     val sourceNum = index + 1
                     "[Источник $sourceNum]\n" +
-                    "Документ: ${chunk.documentTitle}\n" +
-                    "Релевантность: ${String.format("%.3f", chunk.score)}\n" +
-                    "Текст: ${chunk.chunk.content}"
+                            "Документ: ${chunk.documentTitle}\n" +
+                            "Релевантность: ${String.format("%.3f", chunk.score)}\n" +
+                            "Текст: ${chunk.chunk.content}"
                 }.joinToString("\n\n")
 
                 // Шаг 3: Собрать историю диалога для Yandex GPT
@@ -383,12 +402,45 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                     conversationHistory = conversationHistory
                 )
 
-                // Шаг 5: Добавить ответ AI в чат
+                // Шаг 5: Фильтруем источники и перенумеровываем ссылки
+                // Используем регулярное выражение для точного поиска упоминаний источников
+                val sourcePattern = Regex("""\[Источник\s+(\d+)(?:\]|,|\s)""")
+                val mentionedSourceNumbers = sourcePattern.findAll(answer.text)
+                    .map { it.groupValues[1].toInt() }
+                    .toSet() // Убираем дубликаты
+
+                // Создаём карту: старый номер -> новый номер
+                val sourceMapping = mutableMapOf<Int, Int>()
+                val usedSources = mutableListOf<SearchResult>()
+
+                // Фильтруем только те источники, которые действительно упомянуты
+                chunks.forEachIndexed { index, chunk ->
+                    val oldSourceNum = index + 1
+                    if (oldSourceNum in mentionedSourceNumbers) {
+                        val newSourceNum = usedSources.size + 1
+                        sourceMapping[oldSourceNum] = newSourceNum
+                        usedSources.add(chunk)
+                    }
+                }
+
+                // Перенумеровываем ссылки в тексте
+                var updatedText = answer.text
+                // Сортируем в обратном порядке, чтобы не сбить номера при замене
+                sourceMapping.entries.sortedByDescending { it.key }.forEach { (oldNum, newNum) ->
+                    // Заменяем все варианты: [Источник N], [Источник N,], "Источник N:"
+                    // Используем границы слова для точности
+                    updatedText = updatedText.replace(
+                        Regex("""Источник\s+$oldNum(?=[\]:,\s])"""),
+                        "Источник $newNum"
+                    )
+                }
+
+                // Шаг 6: Добавить ответ AI в чат
                 val aiChatMessage = dev.kamikaze.mivdating.data.models.ChatMessage(
                     id = java.util.UUID.randomUUID().toString(),
-                    text = answer.text,
+                    text = updatedText,
                     isUser = false,
-                    sources = chunks
+                    sources = usedSources
                 )
 
                 _uiState.value = _uiState.value.copy(
