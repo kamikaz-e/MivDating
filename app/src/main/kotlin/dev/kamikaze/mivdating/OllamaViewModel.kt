@@ -13,10 +13,10 @@ import dev.kamikaze.mivdating.data.filtering.FilteredResults
 import dev.kamikaze.mivdating.data.indexing.IndexingProgress
 import dev.kamikaze.mivdating.data.indexing.IndexingService
 import dev.kamikaze.mivdating.data.models.Document
-import dev.kamikaze.mivdating.data.network.ApiResponse
 import dev.kamikaze.mivdating.data.network.OllamaClient
 import dev.kamikaze.mivdating.data.network.YandexGptClient
 import dev.kamikaze.mivdating.data.parser.DocumentParser
+import dev.kamikaze.mivdating.data.storage.ChatHistoryRepository
 import dev.kamikaze.mivdating.data.storage.SearchResult
 import dev.kamikaze.mivdating.data.storage.VectorDatabase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,11 +47,10 @@ data class RAGUiState(
     // Режим сравнения
     val comparisonMode: Boolean = false,
 
-    // RAG функциональность
-    val ragQuestion: String = "",
+    // Чат с историей и RAG
+    val chatMessages: List<dev.kamikaze.mivdating.data.models.ChatMessage> = emptyList(),
+    val currentInput: String = "",
     val isGenerating: Boolean = false,
-    val ragAnswer: ApiResponse? = null,
-    val usedChunks: List<SearchResult> = emptyList(),
 
     // Диалог с источником
     val showSourceDialog: Boolean = false,
@@ -66,6 +65,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
     private val ollamaClient = OllamaClient()
     private val documentParser = DocumentParser(application)
     private val vectorDatabase = VectorDatabase(application)
+    private val chatHistoryRepository = ChatHistoryRepository(application)
 
     private val indexingService = IndexingService(
         documentParser = documentParser,
@@ -87,15 +87,16 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         checkOllamaConnection()
-        loadStats()
+        loadChunksAndVectors()
+        loadChatHistory()
     }
 
     fun updateSearchQuery(query: String) {
         searchQuery = query
     }
 
-    fun updateRagQuestion(question: String) {
-        _uiState.value = _uiState.value.copy(ragQuestion = question)
+    fun updateCurrentInput(input: String) {
+        _uiState.value = _uiState.value.copy(currentInput = input)
     }
 
     private fun checkOllamaConnection() {
@@ -109,13 +110,44 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun loadStats() {
+    private fun loadChunksAndVectors() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 documentsCount = vectorDatabase.getDocumentsCount(),
                 chunksCount = vectorDatabase.getEmbeddingsCount(),
                 documents = vectorDatabase.getAllDocuments()
             )
+        }
+    }
+
+    /**
+     * Загрузить историю чата из хранилища
+     */
+    private fun loadChatHistory() {
+        viewModelScope.launch {
+            try {
+                val messages = chatHistoryRepository.loadChatHistory()
+                _uiState.value = _uiState.value.copy(chatMessages = messages)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    error = "Ошибка загрузки истории: ${e.message}"
+                )
+            }
+        }
+    }
+
+    /**
+     * Сохранить историю чата в хранилище
+     */
+    private fun saveChatHistory() {
+        viewModelScope.launch {
+            try {
+                chatHistoryRepository.saveChatHistory(_uiState.value.chatMessages)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    error = "Ошибка сохранения истории: ${e.message}"
+                )
+            }
         }
     }
 
@@ -286,41 +318,46 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Задать вопрос с использованием RAG
+     * Отправить сообщение в чат с RAG
      */
-    fun askQuestionWithRAG() {
-        val question = _uiState.value.ragQuestion
-        if (question.isBlank()) return
+    fun sendChatMessage() {
+        val userMessage = _uiState.value.currentInput.trim()
+        if (userMessage.isBlank()) return
 
         viewModelScope.launch {
+            // Добавить сообщение пользователя в чат
+            val userChatMessage = dev.kamikaze.mivdating.data.models.ChatMessage(
+                id = java.util.UUID.randomUUID().toString(),
+                text = userMessage,
+                isUser = true
+            )
+
             _uiState.value = _uiState.value.copy(
+                chatMessages = _uiState.value.chatMessages + userChatMessage,
+                currentInput = "",
                 isGenerating = true,
-                error = null,
-                ragAnswer = null,
-                usedChunks = emptyList()
+                error = null
             )
 
             try {
-                // Шаг 1: Выполнить семантический поиск
+                // Шаг 1: Выполнить семантический поиск по RAG базе
                 val chunks = if (_uiState.value.useFilter) {
-                    // Поиск с фильтром
                     val filterConfig = FilterConfig(
                         minScoreThreshold = _uiState.value.filterThreshold.toDouble(),
                         useLengthBoost = _uiState.value.useLengthBoost,
                         maxResults = 5
                     )
                     val filtered = indexingService.searchWithFilter(
-                        query = question,
+                        query = userMessage,
                         topK = 10,
                         filterConfig = filterConfig
                     )
                     filtered.results
                 } else {
-                    // Обычный поиск
-                    indexingService.search(question, topK = 5)
+                    indexingService.search(userMessage, topK = 5)
                 }
 
-                // Шаг 2: Собрать контекст из найденных чанков с нумерацией
+                // Шаг 2: Собрать контекст из найденных чанков
                 val context = chunks.mapIndexed { index, chunk ->
                     val sourceNum = index + 1
                     "[Источник $sourceNum]\n" +
@@ -329,37 +366,60 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                     "Текст: ${chunk.chunk.content}"
                 }.joinToString("\n\n")
 
-                // Шаг 3: Отправить запрос в Yandex GPT с контекстом
+                // Шаг 3: Собрать историю диалога для Yandex GPT
+                val conversationHistory = _uiState.value.chatMessages
+                    .dropLast(1) // Убираем только что добавленное сообщение пользователя
+                    .map { msg ->
+                        dev.kamikaze.mivdating.data.network.MessageRequest.Message(
+                            role = if (msg.isUser) "user" else "assistant",
+                            text = msg.text
+                        )
+                    }
+
+                // Шаг 4: Отправить запрос в Yandex GPT с контекстом и историей
                 val answer = yandexGptClient.sendMessageWithContext(
-                    userMessage = question,
-                    context = context
+                    userMessage = userMessage,
+                    context = context,
+                    conversationHistory = conversationHistory
                 )
 
-                // Шаг 4: Сохранить результат
-                _uiState.value = _uiState.value.copy(
-                    isGenerating = false,
-                    ragAnswer = answer,
-                    usedChunks = chunks
+                // Шаг 5: Добавить ответ AI в чат
+                val aiChatMessage = dev.kamikaze.mivdating.data.models.ChatMessage(
+                    id = java.util.UUID.randomUUID().toString(),
+                    text = answer.text,
+                    isUser = false,
+                    sources = chunks
                 )
+
+                _uiState.value = _uiState.value.copy(
+                    chatMessages = _uiState.value.chatMessages + aiChatMessage,
+                    isGenerating = false
+                )
+
+                // Автоматически сохраняем историю после получения ответа
+                saveChatHistory()
 
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isGenerating = false,
-                    error = "Ошибка RAG запроса: ${e.message}"
+                    error = "Ошибка отправки сообщения: ${e.message}"
                 )
             }
         }
     }
 
     /**
-     * Очистить RAG результаты
+     * Очистить историю чата
      */
-    fun clearRagResults() {
+    fun clearChat() {
         _uiState.value = _uiState.value.copy(
-            ragAnswer = null,
-            usedChunks = emptyList(),
-            ragQuestion = ""
+            chatMessages = emptyList(),
+            currentInput = ""
         )
+        // Также очищаем сохраненную историю
+        viewModelScope.launch {
+            chatHistoryRepository.clearChatHistory()
+        }
     }
 
     /**
