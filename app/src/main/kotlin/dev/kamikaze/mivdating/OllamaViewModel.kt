@@ -16,8 +16,10 @@ import dev.kamikaze.mivdating.data.models.OllamaChatMessage
 import dev.kamikaze.mivdating.data.network.OllamaClient
 import dev.kamikaze.mivdating.data.parser.DocumentParser
 import dev.kamikaze.mivdating.data.storage.ChatHistoryRepository
+import dev.kamikaze.mivdating.data.storage.OllamaSettings
 import dev.kamikaze.mivdating.data.storage.SearchResult
 import dev.kamikaze.mivdating.data.storage.VectorDatabase
+import dev.kamikaze.mivdating.utils.OllamaUrlHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,12 +58,15 @@ data class RAGUiState(
     val selectedSource: SearchResult? = null,
 
     val error: String? = null,
-    val ollamaAvailable: Boolean = false
+    val ollamaAvailable: Boolean = false,
+    val ollamaUrl: String = "http://10.0.2.2:11434",
+    val connectionInstructions: String = ""
 )
 
 class RAGViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val ollamaClient = OllamaClient()
+    private val ollamaSettings = OllamaSettings(application)
+    private val ollamaClient = OllamaClient() // Будет обновлен после загрузки настроек
     private val documentParser = DocumentParser(application)
     private val vectorDatabase = VectorDatabase(application)
     private val chatHistoryRepository = ChatHistoryRepository(application)
@@ -83,10 +88,27 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     init {
+        loadOllamaSettings()
         checkOllamaConnection()
         loadChunksAndVectors()
         loadChatHistory()
         autoIndexIfNeeded()
+    }
+    
+    /**
+     * Загружает настройки Ollama и обновляет UI
+     */
+    private fun loadOllamaSettings() {
+        viewModelScope.launch {
+            ollamaSettings.ollamaUrl.collect { url ->
+                val instructions = OllamaUrlHelper.getConnectionInstructions(getApplication())
+                _uiState.value = _uiState.value.copy(
+                    ollamaUrl = url,
+                    connectionInstructions = instructions
+                )
+                android.util.Log.d("RAGViewModel", "Ollama URL: $url")
+            }
+        }
     }
 
     fun updateSearchQuery(query: String) {

@@ -68,7 +68,7 @@ fun ChatScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("💬 RAG Чат")
+                        Text("💬 Чат")
                         Text(
                             "История сохраняется автоматически",
                             style = MaterialTheme.typography.labelSmall,
@@ -163,6 +163,64 @@ fun ChatScreen(
                     )
                 }
             } else {
+                // Статус подключения к Ollama (оффлайн режим)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (uiState.ollamaAvailable)
+                            MaterialTheme.colorScheme.primaryContainer
+                        else
+                            MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = if (uiState.ollamaAvailable) "🟢" else "🔴",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = if (uiState.ollamaAvailable) 
+                                    "Ollama подключен (оффлайн режим)" 
+                                else 
+                                    "Ollama не подключен",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (uiState.ollamaAvailable)
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                else
+                                    MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        if (!uiState.ollamaAvailable && uiState.connectionInstructions.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = uiState.connectionInstructions,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (uiState.ollamaAvailable)
+                                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                else
+                                    MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                        if (uiState.ollamaAvailable) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Адрес: ${uiState.ollamaUrl}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+                
                 // Показываем ошибки, если они есть
                 uiState.error?.let { error ->
                     Card(
@@ -189,28 +247,6 @@ fun ChatScreen(
                                 color = MaterialTheme.colorScheme.onErrorContainer
                             )
                         }
-                    }
-                }
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
-                    ) {
-                        Text(
-                            text = "📚 RAG База: ${uiState.documentsCount} документов, ${uiState.chunksCount} чанков",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            text = "Каждый ваш вопрос автоматически ищет релевантные чанки и использует их как контекст",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                        )
                     }
                 }
             }
