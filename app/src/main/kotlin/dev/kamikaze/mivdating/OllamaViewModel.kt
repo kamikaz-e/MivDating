@@ -12,8 +12,8 @@ import dev.kamikaze.mivdating.data.filtering.FilteredResults
 import dev.kamikaze.mivdating.data.indexing.IndexingProgress
 import dev.kamikaze.mivdating.data.indexing.IndexingService
 import dev.kamikaze.mivdating.data.models.Document
+import dev.kamikaze.mivdating.data.models.OllamaChatMessage
 import dev.kamikaze.mivdating.data.network.OllamaClient
-import dev.kamikaze.mivdating.data.network.YandexGptClient
 import dev.kamikaze.mivdating.data.parser.DocumentParser
 import dev.kamikaze.mivdating.data.storage.ChatHistoryRepository
 import dev.kamikaze.mivdating.data.storage.SearchResult
@@ -82,8 +82,6 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
     var searchQuery by mutableStateOf("")
         private set
 
-    private val yandexGptClient = YandexGptClient
-
     init {
         checkOllamaConnection()
         loadChunksAndVectors()
@@ -102,8 +100,27 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
     private fun checkOllamaConnection() {
         viewModelScope.launch {
             val available = try {
-                ollamaClient.isAvailable()
+                val isOllamaAvailable = ollamaClient.isAvailable()
+                if (isOllamaAvailable) {
+                    // Проверяем доступность модели и пытаемся найти альтернативу
+                    val isModelAvailable = ollamaClient.isModelAvailable()
+                    if (!isModelAvailable) {
+                        android.util.Log.w("RAGViewModel", "Ollama is available but model qwen3:14b is not found")
+                        // Пытаемся найти альтернативную модель
+                        val alternative = ollamaClient.findQwen14bModel()
+                        if (alternative != null) {
+                            android.util.Log.i("RAGViewModel", "Found alternative model: $alternative")
+                        } else {
+                            val allModels = ollamaClient.getAvailableModels()
+                            android.util.Log.w("RAGViewModel", "Available models: $allModels")
+                        }
+                    }
+                    isOllamaAvailable
+                } else {
+                    false
+                }
             } catch (e: Exception) {
+                android.util.Log.e("RAGViewModel", "Error checking Ollama connection", e)
                 false
             }
             _uiState.value = _uiState.value.copy(ollamaAvailable = available)
@@ -177,7 +194,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
 
             // Файлы книг в assets
             val files =
-                listOf("book1.txt", "book2.html", "android_book_1.html", "android_book_2.html")
+                listOf("android_book_1.html")
             indexingService.indexDocuments(files).collect { progress ->
                 when (progress) {
                     is IndexingProgress.Parsing -> {
@@ -337,7 +354,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Отправить сообщение в чат с RAG
+     * Отправить сообщение в чат (без RAG, прямой запрос к модели)
      */
     fun sendChatMessage() {
         val userMessage = _uiState.value.currentInput.trim()
@@ -359,88 +376,31 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
             )
 
             try {
-                // Шаг 1: Выполнить семантический поиск по RAG базе
-                val chunks = if (_uiState.value.useFilter) {
-                    val filterConfig = FilterConfig(
-                        minScoreThreshold = _uiState.value.filterThreshold.toDouble(),
-                        useLengthBoost = _uiState.value.useLengthBoost,
-                        maxResults = 5
-                    )
-                    val filtered = indexingService.searchWithFilter(
-                        query = userMessage,
-                        topK = 10,
-                        filterConfig = filterConfig
-                    )
-                    filtered.results
-                } else {
-                    indexingService.search(userMessage, topK = 5)
-                }
-
-                // Шаг 2: Собрать контекст из найденных чанков
-                val context = chunks.mapIndexed { index, chunk ->
-                    val sourceNum = index + 1
-                    "[Источник $sourceNum]\n" +
-                            "Документ: ${chunk.documentTitle}\n" +
-                            "Релевантность: ${String.format("%.3f", chunk.score)}\n" +
-                            "Текст: ${chunk.chunk.content}"
-                }.joinToString("\n\n")
-
-                // Шаг 3: Собрать историю диалога для Yandex GPT
+                // Собрать историю диалога для Ollama
                 val conversationHistory = _uiState.value.chatMessages
                     .dropLast(1) // Убираем только что добавленное сообщение пользователя
                     .map { msg ->
-                        dev.kamikaze.mivdating.data.network.MessageRequest.Message(
+                        OllamaChatMessage(
                             role = if (msg.isUser) "user" else "assistant",
-                            text = msg.text
+                            content = msg.text
                         )
                     }
 
-                // Шаг 4: Отправить запрос в Yandex GPT с контекстом и историей
-                val answer = yandexGptClient.sendMessageWithContext(
+                // Отправить прямой запрос в Ollama без RAG
+                android.util.Log.d("RAGViewModel", "Sending direct chat request to Ollama")
+                val answer = ollamaClient.chat(
                     userMessage = userMessage,
-                    context = context,
                     conversationHistory = conversationHistory
                 )
 
-                // Шаг 5: Фильтруем источники и перенумеровываем ссылки
-                // Используем регулярное выражение для точного поиска упоминаний источников
-                val sourcePattern = Regex("""\[Источник\s+(\d+)(?:\]|,|\s)""")
-                val mentionedSourceNumbers = sourcePattern.findAll(answer.text)
-                    .map { it.groupValues[1].toInt() }
-                    .toSet() // Убираем дубликаты
+                android.util.Log.d("RAGViewModel", "Received response from Ollama, done: ${answer.done}, content length: ${answer.message.content.length}")
 
-                // Создаём карту: старый номер -> новый номер
-                val sourceMapping = mutableMapOf<Int, Int>()
-                val usedSources = mutableListOf<SearchResult>()
-
-                // Фильтруем только те источники, которые действительно упомянуты
-                chunks.forEachIndexed { index, chunk ->
-                    val oldSourceNum = index + 1
-                    if (oldSourceNum in mentionedSourceNumbers) {
-                        val newSourceNum = usedSources.size + 1
-                        sourceMapping[oldSourceNum] = newSourceNum
-                        usedSources.add(chunk)
-                    }
-                }
-
-                // Перенумеровываем ссылки в тексте
-                var updatedText = answer.text
-                // Сортируем в обратном порядке, чтобы не сбить номера при замене
-                sourceMapping.entries.sortedByDescending { it.key }.forEach { (oldNum, newNum) ->
-                    // Заменяем все варианты: [Источник N], [Источник N,], "Источник N:"
-                    // Используем границы слова для точности
-                    updatedText = updatedText.replace(
-                        Regex("""Источник\s+$oldNum(?=[\]:,\s])"""),
-                        "Источник $newNum"
-                    )
-                }
-
-                // Шаг 6: Добавить ответ AI в чат
+                // Добавить ответ AI в чат
                 val aiChatMessage = dev.kamikaze.mivdating.data.models.ChatMessage(
                     id = java.util.UUID.randomUUID().toString(),
-                    text = updatedText,
+                    text = answer.message.content,
                     isUser = false,
-                    sources = usedSources
+                    sources = emptyList() // Без источников, так как RAG отключен
                 )
 
                 _uiState.value = _uiState.value.copy(
@@ -452,9 +412,49 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                 saveChatHistory()
 
             } catch (e: Exception) {
+                android.util.Log.e("RAGViewModel", "Error sending chat message", e)
+                
+                // Пытаемся получить список доступных моделей для более информативного сообщения
+                val availableModels = try {
+                    ollamaClient.getAvailableModels()
+                } catch (ex: Exception) {
+                    emptyList()
+                }
+                
+                val errorMessage = when {
+                    e.message?.contains("timeout", ignoreCase = true) == true -> 
+                        "Превышено время ожидания ответа от Ollama (5 минут). Проверьте, что Ollama запущен и модель доступна."
+                    e.message?.contains("connection", ignoreCase = true) == true || 
+                    e.message?.contains("failed to connect", ignoreCase = true) == true -> 
+                        "Не удалось подключиться к Ollama. Убедитесь, что:\n" +
+                        "1. Ollama запущен на вашем компьютере\n" +
+                        "2. Для эмулятора: используйте адрес http://10.0.2.2:11434\n" +
+                        "3. Для реального устройства: используйте IP вашего компьютера"
+                    e.message?.contains("model", ignoreCase = true) == true || 
+                    e.message?.contains("not found", ignoreCase = true) == true -> {
+                        val baseMsg = "Модель qwen3:14b не найдена."
+                        if (availableModels.isNotEmpty()) {
+                            baseMsg + "\n\nДоступные модели:\n" + 
+                            availableModels.joinToString("\n") { "  • $it" } +
+                            "\n\nПопробуйте:\n  ollama pull qwen3:14b\nили используйте одну из доступных моделей."
+                        } else {
+                            baseMsg + "\n\nВыполните: ollama pull qwen3:14b"
+                        }
+                    }
+                    e.message?.contains("404", ignoreCase = true) == true -> 
+                        "Эндпоинт не найден. Проверьте, что Ollama запущен и доступен на http://10.0.2.2:11434"
+                    else -> {
+                        val baseMsg = "Ошибка отправки сообщения: ${e.message ?: e.javaClass.simpleName}"
+                        if (availableModels.isNotEmpty()) {
+                            baseMsg + "\n\nДоступные модели: ${availableModels.joinToString(", ")}"
+                        } else {
+                            baseMsg + "\n\nПроверьте логи в Logcat для подробностей."
+                        }
+                    }
+                }
                 _uiState.value = _uiState.value.copy(
                     isGenerating = false,
-                    error = "Ошибка отправки сообщения: ${e.message}"
+                    error = errorMessage
                 )
             }
         }
