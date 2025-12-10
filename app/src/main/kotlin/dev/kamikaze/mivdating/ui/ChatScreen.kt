@@ -20,6 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,11 +33,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -77,6 +84,9 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.showSettings() }) {
+                        Icon(Icons.Default.Settings, "Настройки")
+                    }
                     if (uiState.chatMessages.isNotEmpty()) {
                         IconButton(onClick = { viewModel.clearChat() }) {
                             Icon(Icons.Default.Delete, "Очистить чат")
@@ -301,6 +311,18 @@ fun ChatScreen(
                 )
             }
         }
+        
+        // Диалог настроек
+        if (uiState.showSettingsDialog) {
+            SettingsDialog(
+                currentUrl = uiState.ollamaUrl,
+                onDismiss = { viewModel.closeSettings() },
+                onSave = { newUrl ->
+                    viewModel.updateOllamaUrl(newUrl)
+                    viewModel.closeSettings()
+                }
+            )
+        }
     }
 }
 
@@ -508,6 +530,72 @@ fun ChatInputField(
             }
         }
     }
+}
+
+@Composable
+fun SettingsDialog(
+    currentUrl: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var urlText by remember { mutableStateOf(currentUrl) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Настройки сервера")
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "Выберите сервер для подключения:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                
+                OutlinedTextField(
+                    value = urlText,
+                    onValueChange = { urlText = it },
+                    label = { Text("URL сервера") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("http://130.49.153.154:8000") }
+                )
+                
+                // Быстрые варианты
+                Text(
+                    "Быстрый выбор:",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                
+                Button(
+                    onClick = { urlText = "http://130.49.153.154:8000" },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Локальный Ollama (эмулятор)")
+                }
+                
+                Button(
+                    onClick = { urlText = "http://130.49.153.154:8000" },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Удаленный сервер (tinyllama)")
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(urlText) }) {
+                Text("Сохранить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
 }
 
 private fun formatTimestamp(timestamp: Long): String {

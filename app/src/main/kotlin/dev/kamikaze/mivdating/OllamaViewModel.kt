@@ -57,16 +57,19 @@ data class RAGUiState(
     val showSourceDialog: Boolean = false,
     val selectedSource: SearchResult? = null,
 
+    // Диалог настроек
+    val showSettingsDialog: Boolean = false,
+
     val error: String? = null,
     val ollamaAvailable: Boolean = false,
-    val ollamaUrl: String = "http://10.0.2.2:11434",
+    val ollamaUrl: String = "http://130.49.153.154:8000",
     val connectionInstructions: String = ""
 )
 
 class RAGViewModel(application: Application) : AndroidViewModel(application) {
 
     private val ollamaSettings = OllamaSettings(application)
-    private val ollamaClient = OllamaClient() // Будет обновлен после загрузки настроек
+    private val ollamaClient = OllamaClient() // URL будет обновлен после загрузки настроек
     private val documentParser = DocumentParser(application)
     private val vectorDatabase = VectorDatabase(application)
     private val chatHistoryRepository = ChatHistoryRepository(application)
@@ -96,17 +99,23 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     /**
-     * Загружает настройки Ollama и обновляет UI
+     * Загружает настройки Ollama и обновляет UI и клиент
      */
     private fun loadOllamaSettings() {
         viewModelScope.launch {
             ollamaSettings.ollamaUrl.collect { url ->
+                // Обновляем URL в клиенте
+                ollamaClient.updateBaseUrl(url)
+
                 val instructions = OllamaUrlHelper.getConnectionInstructions(getApplication())
                 _uiState.value = _uiState.value.copy(
                     ollamaUrl = url,
                     connectionInstructions = instructions
                 )
-                android.util.Log.d("RAGViewModel", "Ollama URL: $url")
+                android.util.Log.d("RAGViewModel", "Ollama URL updated: $url")
+
+                // Перепроверяем подключение после смены URL
+                checkOllamaConnection()
             }
         }
     }
@@ -117,6 +126,24 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateCurrentInput(input: String) {
         _uiState.value = _uiState.value.copy(currentInput = input)
+    }
+
+    /**
+     * Обновляет URL Ollama сервера
+     */
+    fun updateOllamaUrl(newUrl: String) {
+        viewModelScope.launch {
+            try {
+                // Сохраняем URL в настройки
+                ollamaSettings.setOllamaUrl(newUrl)
+                android.util.Log.d("RAGViewModel", "Ollama URL saved: $newUrl")
+            } catch (e: Exception) {
+                android.util.Log.e("RAGViewModel", "Error saving Ollama URL", e)
+                _uiState.value = _uiState.value.copy(
+                    error = "Ошибка сохранения URL: ${e.message}"
+                )
+            }
+        }
     }
 
     private fun checkOllamaConnection() {
@@ -450,7 +477,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                     e.message?.contains("failed to connect", ignoreCase = true) == true -> 
                         "Не удалось подключиться к Ollama. Убедитесь, что:\n" +
                         "1. Ollama запущен на вашем компьютере\n" +
-                        "2. Для эмулятора: используйте адрес http://10.0.2.2:11434\n" +
+                        "2. Для эмулятора: используйте адрес http://130.49.153.154:8000\n" +
                         "3. Для реального устройства: используйте IP вашего компьютера"
                     e.message?.contains("model", ignoreCase = true) == true || 
                     e.message?.contains("not found", ignoreCase = true) == true -> {
@@ -464,7 +491,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     e.message?.contains("404", ignoreCase = true) == true -> 
-                        "Эндпоинт не найден. Проверьте, что Ollama запущен и доступен на http://10.0.2.2:11434"
+                        "Эндпоинт не найден. Проверьте, что Ollama запущен и доступен на http://130.49.153.154:8000"
                     else -> {
                         val baseMsg = "Ошибка отправки сообщения: ${e.message ?: e.javaClass.simpleName}"
                         if (availableModels.isNotEmpty()) {
@@ -514,6 +541,20 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
             showSourceDialog = false,
             selectedSource = null
         )
+    }
+
+    /**
+     * Показать диалог настроек
+     */
+    fun showSettings() {
+        _uiState.value = _uiState.value.copy(showSettingsDialog = true)
+    }
+
+    /**
+     * Закрыть диалог настроек
+     */
+    fun closeSettings() {
+        _uiState.value = _uiState.value.copy(showSettingsDialog = false)
     }
 
     fun clearIndex() {

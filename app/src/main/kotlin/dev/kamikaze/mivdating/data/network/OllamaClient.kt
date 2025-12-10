@@ -24,10 +24,44 @@ import timber.log.Timber
 import java.util.concurrent.TimeUnit
 
 class OllamaClient(
-    private val baseUrl: String = "http://10.0.2.2:11434",
+    baseUrl: String = "http://10.0.2.2:11434",
     private val embeddingModel: String = "nomic-embed-text",
-    private val chatModel: String = "qwen2.5:14b"
+    private val chatModel: String = "tinyllama"
 ) : AutoCloseable {
+    
+    /**
+     * Определяет, является ли URL удаленным Flask API сервером
+     */
+    private fun isRemoteServer(url: String): Boolean {
+        return url.contains(":8000") || url.contains("130.49.153.154")
+    }
+    
+    /**
+     * Получает модель для использования в зависимости от типа сервера
+     */
+    private suspend fun getModelForServer(): String {
+        return if (isRemoteServer(baseUrl)) {
+            // Для удаленного сервера используем tinyllama
+            "tinyllama"
+        } else {
+            // Для локального Ollama используем указанную модель
+            chatModel
+        }
+    }
+
+    // Делаем baseUrl изменяемым для возможности обновления из настроек
+    private var baseUrl: String = baseUrl
+        private set
+
+    /**
+     * Обновить URL Ollama сервера (для переключения между локальным и удаленным)
+     */
+    fun updateBaseUrl(newUrl: String) {
+        baseUrl = newUrl.trimEnd('/')
+        Timber.i("OllamaClient baseUrl updated to: $baseUrl")
+        // Сбрасываем кеш модели при смене URL
+        resolvedChatModel = null
+    }
 
     // Кэш для найденной модели (чтобы не искать каждый раз)
     private var resolvedChatModel: String? = null
@@ -164,12 +198,21 @@ class OllamaClient(
 
     suspend fun isAvailable(): Boolean {
         return try {
-            Timber.d("Checking Ollama availability at $baseUrl/api/tags")
-            val response = httpClient.get("$baseUrl/api/tags")
-            Timber.d("Ollama is available, response status: ${response.status}")
-            true
+            // Для удаленного сервера проверяем /health endpoint
+            if (isRemoteServer(baseUrl)) {
+                Timber.d("Checking remote server availability at $baseUrl/health")
+                val response = httpClient.get("$baseUrl/health")
+                Timber.d("Remote server is available, response status: ${response.status}")
+                return response.status.value in 200..299
+            } else {
+                // Для локального Ollama проверяем /api/tags
+                Timber.d("Checking Ollama availability at $baseUrl/api/tags")
+                val response = httpClient.get("$baseUrl/api/tags")
+                Timber.d("Ollama is available, response status: ${response.status}")
+                return response.status.value in 200..299
+            }
         } catch (e: Exception) {
-            Timber.e(e, "Ollama is not available at $baseUrl")
+            Timber.e(e, "Server is not available at $baseUrl")
             false
         }
     }
@@ -179,12 +222,20 @@ class OllamaClient(
      */
     suspend fun getAvailableModels(): List<String> {
         return try {
+            // Для удаленного сервера и локального Ollama используется один endpoint
             val response = httpClient.get("$baseUrl/api/tags")
             val tagsResponse = response.body<OllamaTagsResponse>()
-            tagsResponse.models.map { it.name }
+            val models = tagsResponse.models.map { it.name }
+            Timber.d("Available models: $models")
+            models
         } catch (e: Exception) {
             Timber.e(e, "Error getting available models")
-            emptyList()
+            // Для удаленного сервера возвращаем дефолтную модель
+            if (isRemoteServer(baseUrl)) {
+                listOf("tinyllama")
+            } else {
+                emptyList()
+            }
         }
     }
 
@@ -259,6 +310,14 @@ class OllamaClient(
      * Получает имя модели для использования (с автоматическим определением)
      */
     private suspend fun getResolvedModelName(): String {
+        // Для удаленного сервера всегда используем tinyllama
+        if (isRemoteServer(baseUrl)) {
+            val remoteModel = "tinyllama"
+            Timber.d("Using remote server model: $remoteModel")
+            return remoteModel
+        }
+        
+        // Для локального Ollama используем кеширование и поиск
         if (resolvedChatModel != null) {
             return resolvedChatModel!!
         }
@@ -312,6 +371,7 @@ class OllamaClient(
                 options = OllamaChatOptions(temperature = 0.3)
             )
 
+            Timber.d("baseUrl : $baseUrl")
             val response = httpClient.post("$baseUrl/api/chat") {
                 contentType(ContentType.Application.Json)
                 setBody(request)
