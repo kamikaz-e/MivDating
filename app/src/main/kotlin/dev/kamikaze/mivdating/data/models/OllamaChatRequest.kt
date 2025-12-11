@@ -20,5 +20,9 @@ data class OllamaChatMessage(
 @Serializable
 data class OllamaChatOptions(
     val temperature: Double = 0.3,
-    val num_predict: Int? = null
+    val num_predict: Int? = null,
+    val num_ctx: Int? = null,         // Размер контекстного окна
+    val top_p: Double? = null,         // Nucleus sampling
+    val top_k: Int? = null,            // Top-k sampling
+    val repeat_penalty: Double? = null // Штраф за повторения
 )

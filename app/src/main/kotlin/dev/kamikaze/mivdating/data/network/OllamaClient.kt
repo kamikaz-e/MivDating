@@ -355,7 +355,21 @@ class OllamaClient(
             val messages = listOf(
                 OllamaChatMessage(
                     role = "system",
-                    content = "Ты — полезный AI-ассистент. Отвечай на вопросы пользователя четко и по существу."
+                    content = """
+                    Ты — AI-ассистент, специализирующийся на разработке Android приложений с использованием Kotlin и Jetpack Compose.
+
+                    Твоя задача:
+                    - Помогать с написанием кода на Jetpack Compose
+                    - Отвечать на вопросы по Android разработке
+                    - Предоставлять лучшие практики и рекомендации
+                    - Объяснять концепции четко и понятно
+
+                    При написании кода:
+                    - Используй современные API (Material3, Navigation Compose)
+                    - Следуй принципам Jetpack Compose
+                    - Пиши чистый, идиоматический Kotlin код
+                    - Учитывай производительность и оптимизацию
+                    """.trimIndent()
                 )
             ) + conversationHistory + listOf(
                 OllamaChatMessage(role = "user", content = userMessage)
@@ -368,7 +382,14 @@ class OllamaClient(
                 model = modelToUse,
                 messages = messages,
                 stream = false,
-                options = OllamaChatOptions(temperature = 0.3)
+                options = OllamaChatOptions(
+                    temperature = 0.3,
+                    num_ctx = 8192,           // Увеличенное контекстное окно
+                    num_predict = 2048,       // Максимум токенов для генерации
+                    top_p = 0.9,
+                    top_k = 40,
+                    repeat_penalty = 1.1
+                )
             )
 
             Timber.d("baseUrl : $baseUrl")
@@ -387,6 +408,84 @@ class OllamaClient(
             result
         } catch (e: Exception) {
             Timber.e(e, "Error in chat request to Ollama")
+            throw e
+        }
+    }
+
+    /**
+     * Специализированный метод для генерации кода на Jetpack Compose
+     * Использует оптимизированные параметры для написания кода
+     */
+    suspend fun generateJetpackComposeCode(
+        userPrompt: String,
+        conversationHistory: List<OllamaChatMessage> = emptyList()
+    ): OllamaChatResponse {
+        return try {
+            val systemPrompt = """
+            Ты — эксперт по разработке Android приложений на Kotlin и Jetpack Compose.
+
+            Твоя задача — генерировать чистый, идиоматический и современный код на Jetpack Compose.
+
+            ВАЖНЫЕ ПРАВИЛА:
+            1. Используй только современные API Jetpack Compose (Material3, если требуется UI)
+            2. Следуй принципам Compose: однонаправленный поток данных, поднятие состояния
+            3. Применяй best practices: помни о recomposition, используй remember, derivedStateOf когда нужно
+            4. Код должен быть типобезопасным и использовать возможности Kotlin
+            5. Добавляй минимальные комментарии только для сложной логики
+            6. Используй @Composable функции правильно (соблюдай naming conventions)
+            7. Для preview используй @Preview с @Composable функциями
+            8. Применяй модификаторы через Modifier DSL
+            9. Используй LaunchedEffect, rememberCoroutineScope для side effects
+            10. Для навигации используй Navigation Compose
+
+            СТРУКТУРА ОТВЕТА:
+            - Начинай с краткого объяснения (1-2 предложения)
+            - Предоставь полный, готовый к использованию код
+            - Если код большой, структурируй его логически
+            - В конце дай краткие рекомендации по использованию (если нужно)
+
+            ОПТИМИЗАЦИЯ:
+            - Минимизируй ненужные recomposition
+            - Используй remember для вычисляемых значений
+            - Применяй Modifier правильно и эффективно
+            - Избегай создания лямбд в Composable без необходимости
+            """.trimIndent()
+
+            val messages = listOf(
+                OllamaChatMessage(role = "system", content = systemPrompt)
+            ) + conversationHistory + listOf(
+                OllamaChatMessage(role = "user", content = userPrompt)
+            )
+
+            val modelToUse = getResolvedModelName()
+            Timber.d("Generating Jetpack Compose code with model: $modelToUse")
+
+            val request = OllamaChatRequest(
+                model = modelToUse,
+                messages = messages,
+                stream = false,
+                options = OllamaChatOptions(
+                    temperature = 0.15,       // Низкая температура для более детерминированного кода
+                    num_ctx = 16384,          // Большое контекстное окно для сложного кода
+                    num_predict = 4096,       // Больше токенов для полных решений
+                    top_p = 0.85,             // Более консервативный sampling
+                    top_k = 30,               // Ограничиваем выбор токенов
+                    repeat_penalty = 1.15     // Сильнее штрафуем повторения
+                )
+            )
+
+            val response = httpClient.post("$baseUrl/api/chat") {
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+
+            val responseText = response.bodyAsText()
+            Timber.d("Compose code generation response status: ${response.status}, body length: ${responseText.length}")
+            val result = parseNdjsonChatResponse(responseText)
+            Timber.d("Compose code generated successfully, message length: ${result.message.content.length}")
+            result
+        } catch (e: Exception) {
+            Timber.e(e, "Error generating Jetpack Compose code")
             throw e
         }
     }
@@ -415,7 +514,14 @@ class OllamaClient(
                 model = modelToUse,
                 messages = messages,
                 stream = false,
-                options = OllamaChatOptions(temperature = 0.3)
+                options = OllamaChatOptions(
+                    temperature = 0.3,
+                    num_ctx = 8192,
+                    num_predict = 2048,
+                    top_p = 0.9,
+                    top_k = 40,
+                    repeat_penalty = 1.1
+                )
             )
 
             val response = httpClient.post("$baseUrl/api/chat") {

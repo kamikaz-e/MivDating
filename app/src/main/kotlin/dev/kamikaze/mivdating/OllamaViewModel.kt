@@ -510,6 +510,84 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Отправить сообщение для генерации кода на Jetpack Compose
+     * Использует оптимизированные параметры и специализированный промпт
+     */
+    fun sendComposeCodeRequest() {
+        val userMessage = _uiState.value.currentInput.trim()
+        if (userMessage.isBlank()) return
+
+        viewModelScope.launch {
+            // Добавить сообщение пользователя в чат
+            val userChatMessage = dev.kamikaze.mivdating.data.models.ChatMessage(
+                id = java.util.UUID.randomUUID().toString(),
+                text = userMessage,
+                isUser = true
+            )
+
+            _uiState.value = _uiState.value.copy(
+                chatMessages = _uiState.value.chatMessages + userChatMessage,
+                currentInput = "",
+                isGenerating = true,
+                error = null
+            )
+
+            try {
+                // Собрать историю диалога для Ollama
+                val conversationHistory = _uiState.value.chatMessages
+                    .dropLast(1) // Убираем только что добавленное сообщение пользователя
+                    .map { msg ->
+                        OllamaChatMessage(
+                            role = if (msg.isUser) "user" else "assistant",
+                            content = msg.text
+                        )
+                    }
+
+                // Отправить запрос на генерацию кода
+                android.util.Log.d("RAGViewModel", "Sending Compose code generation request")
+                val answer = ollamaClient.generateJetpackComposeCode(
+                    userPrompt = userMessage,
+                    conversationHistory = conversationHistory
+                )
+
+                android.util.Log.d("RAGViewModel", "Received Compose code, content length: ${answer.message.content.length}")
+
+                // Добавить ответ AI в чат
+                val aiChatMessage = dev.kamikaze.mivdating.data.models.ChatMessage(
+                    id = java.util.UUID.randomUUID().toString(),
+                    text = answer.message.content,
+                    isUser = false,
+                    sources = emptyList()
+                )
+
+                _uiState.value = _uiState.value.copy(
+                    chatMessages = _uiState.value.chatMessages + aiChatMessage,
+                    isGenerating = false
+                )
+
+                // Автоматически сохраняем историю после получения ответа
+                saveChatHistory()
+
+            } catch (e: Exception) {
+                android.util.Log.e("RAGViewModel", "Error generating Compose code", e)
+
+                val errorMessage = when {
+                    e.message?.contains("timeout", ignoreCase = true) == true ->
+                        "Превышено время ожидания. Генерация кода может занять больше времени."
+                    e.message?.contains("connection", ignoreCase = true) == true ->
+                        "Ошибка подключения к LLM сервису. Проверьте подключение."
+                    else -> "Ошибка генерации кода: ${e.message}"
+                }
+
+                _uiState.value = _uiState.value.copy(
+                    isGenerating = false,
+                    error = errorMessage
+                )
+            }
+        }
+    }
+
+    /**
      * Очистить историю чата
      */
     fun clearChat() {
