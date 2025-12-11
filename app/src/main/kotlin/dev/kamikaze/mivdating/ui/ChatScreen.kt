@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -101,8 +102,17 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Показываем прогресс индексации
-            if (uiState.isIndexing) {
+            // Список сообщений и статусы
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Показываем прогресс индексации
+                if (uiState.isIndexing) {
+                    item {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -155,9 +165,11 @@ fun ChatScreen(
                         )
                     }
                 }
-            }
-            // Информация о статусе после индексации
-            else if (uiState.chunksCount == 0) {
+                    }
+                }
+                // Информация о статусе после индексации
+                else if (uiState.chunksCount == 0) {
+                    item {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -172,8 +184,10 @@ fun ChatScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
-            } else {
-                // Статус подключения к Ollama (оффлайн режим)
+                    }
+                } else {
+                    item {
+                        // Статус подключения к Ollama (оффлайн режим)
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -230,9 +244,12 @@ fun ChatScreen(
                         }
                     }
                 }
-                
+                    }
+                }
+
                 // Показываем ошибки, если они есть
-                uiState.error?.let { error ->
+                if (uiState.error != null) {
+                    item {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -252,27 +269,19 @@ fun ChatScreen(
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = error,
+                                text = uiState.error ?: "",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onErrorContainer
                             )
                         }
                     }
+                    }
                 }
-            }
 
-            // Список сообщений
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
                 item { Spacer(Modifier.height(8.dp)) }
 
-                items(uiState.chatMessages) { message ->
+                // Сообщения чата
+                items(uiState.chatMessages, key = { it.id }) { message ->
                     ChatMessageBubble(
                         message = message,
                         onSourceClick = { source ->
@@ -288,6 +297,47 @@ fun ChatScreen(
                 }
 
                 item { Spacer(Modifier.height(8.dp)) }
+            }
+
+            // Переключатель режима оптимизации
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (uiState.useOptimizedComposeMode)
+                                "⚡ Режим Jetpack Compose"
+                            else
+                                "💬 Обычный режим",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = if (uiState.useOptimizedComposeMode)
+                                "Оптимизирован для генерации кода"
+                            else
+                                "Общие вопросы и задачи",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Switch(
+                        checked = uiState.useOptimizedComposeMode,
+                        onCheckedChange = { viewModel.toggleOptimizedComposeMode() }
+                    )
+                }
             }
 
             // Поле ввода
@@ -343,7 +393,9 @@ fun ChatMessageBubble(
         MaterialTheme.colorScheme.onSecondaryContainer
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
         horizontalAlignment = alignment
     ) {
         Card(
@@ -434,7 +486,9 @@ fun ChatMessageBubble(
 @Composable
 fun ChatTypingIndicator() {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.Start
     ) {
         Card(

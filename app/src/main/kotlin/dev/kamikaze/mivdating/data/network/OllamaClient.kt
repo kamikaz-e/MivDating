@@ -23,19 +23,63 @@ import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 
+/**
+ * Системные промпты для разных режимов работы LLM
+ */
+object SystemPrompts {
+    /**
+     * Базовый промпт AI-ассистента (обычный режим)
+     */
+    const val BASIC_ASSISTANT =
+        "Ты — полезный AI-ассистент. Отвечай на вопросы пользователя четко и по существу."
+
+    /**
+     * Специализированный промпт для генерации кода на Jetpack Compose
+     */
+    val JETPACK_COMPOSE_EXPERT = """
+Ты — эксперт по разработке Android приложений на Kotlin и Jetpack Compose.
+
+Твоя задача — генерировать чистый, идиоматический и современный код на Jetpack Compose.
+
+ВАЖНЫЕ ПРАВИЛА:
+1. Используй только современные API Jetpack Compose (Material3, если требуется UI)
+2. Следуй принципам Compose: однонаправленный поток данных, поднятие состояния
+3. Применяй best practices: помни о recomposition, используй remember, derivedStateOf когда нужно
+4. Код должен быть типобезопасным и использовать возможности Kotlin
+5. Добавляй минимальные комментарии только для сложной логики
+6. Используй @Composable функции правильно (соблюдай naming conventions)
+7. Для preview используй @Preview с @Composable функциями
+8. Применяй модификаторы через Modifier DSL
+9. Используй LaunchedEffect, rememberCoroutineScope для side effects
+10. Для навигации используй Navigation Compose
+
+СТРУКТУРА ОТВЕТА:
+- Начинай с краткого объяснения (1-2 предложения)
+- Предоставь полный, готовый к использованию код
+- Если код большой, структурируй его логически
+- В конце дай краткие рекомендации по использованию (если нужно)
+
+ОПТИМИЗАЦИЯ:
+- Минимизируй ненужные recomposition
+- Используй remember для вычисляемых значений
+- Применяй Modifier правильно и эффективно
+- Избегай создания лямбд в Composable без необходимости
+    """.trimIndent()
+}
+
 class OllamaClient(
     baseUrl: String = "http://10.0.2.2:11434",
     private val embeddingModel: String = "nomic-embed-text",
     private val chatModel: String = "tinyllama"
 ) : AutoCloseable {
-    
+
     /**
      * Определяет, является ли URL удаленным Flask API сервером
      */
     private fun isRemoteServer(url: String): Boolean {
         return url.contains(":8000") || url.contains("130.49.153.154")
     }
-    
+
     /**
      * Получает модель для использования в зависимости от типа сервера
      */
@@ -247,8 +291,8 @@ class OllamaClient(
         return try {
             val models = getAvailableModels()
             val found = models.firstOrNull { modelName ->
-                modelName.contains("qwen", ignoreCase = true) && 
-                modelName.contains("14b", ignoreCase = true)
+                modelName.contains("qwen", ignoreCase = true) &&
+                        modelName.contains("14b", ignoreCase = true)
             }
             if (found != null) {
                 Timber.d("Found Qwen 14b model: $found")
@@ -270,26 +314,26 @@ class OllamaClient(
         return try {
             Timber.d("Checking if model $chatModel is available")
             val models = getAvailableModels()
-            
+
             // Точное совпадение
             val exactMatch = models.any { it == chatModel }
             if (exactMatch) {
                 Timber.d("Model $chatModel found (exact match)")
                 return true
             }
-            
+
             // Поиск по части имени (до двоеточия)
             val modelBaseName = chatModel.split(":")[0]
-            val partialMatch = models.any { 
-                it.startsWith(modelBaseName, ignoreCase = true) || 
-                it.contains(modelBaseName, ignoreCase = true)
+            val partialMatch = models.any {
+                it.startsWith(modelBaseName, ignoreCase = true) ||
+                        it.contains(modelBaseName, ignoreCase = true)
             }
-            
+
             if (partialMatch) {
                 Timber.d("Model similar to $chatModel found")
                 return true
             }
-            
+
             // Поиск любой модели qwen с 14b
             val qwen14b = findQwen14bModel()
             if (qwen14b != null) {
@@ -297,7 +341,7 @@ class OllamaClient(
                 Timber.w("Consider updating chatModel to: $qwen14b")
                 return true
             }
-            
+
             Timber.w("Model $chatModel not found. Available models: $models")
             false
         } catch (e: Exception) {
@@ -316,19 +360,19 @@ class OllamaClient(
             Timber.d("Using remote server model: $remoteModel")
             return remoteModel
         }
-        
+
         // Для локального Ollama используем кеширование и поиск
         if (resolvedChatModel != null) {
             return resolvedChatModel!!
         }
-        
+
         // Проверяем точное совпадение
         val models = getAvailableModels()
         if (models.contains(chatModel)) {
             resolvedChatModel = chatModel
             return chatModel
         }
-        
+
         // Ищем альтернативную модель qwen:14b
         val alternative = findQwen14bModel()
         if (alternative != null) {
@@ -336,7 +380,7 @@ class OllamaClient(
             resolvedChatModel = alternative
             return alternative
         }
-        
+
         // Если ничего не найдено, используем исходное имя (может быть ошибка, но попробуем)
         Timber.w("Model $chatModel not found, but will try to use it anyway")
         return chatModel
@@ -345,33 +389,16 @@ class OllamaClient(
     /**
      * Отправка сообщения в чат без RAG
      */
-    suspend fun chat(
-        userMessage: String,
-        conversationHistory: List<OllamaChatMessage> = emptyList()
-    ): OllamaChatResponse {
+    suspend fun chat(userMessage: String): OllamaChatResponse {
         return try {
             val modelToUse = getResolvedModelName()
-            
+
             val messages = listOf(
                 OllamaChatMessage(
                     role = "system",
-                    content = """
-                    Ты — AI-ассистент, специализирующийся на разработке Android приложений с использованием Kotlin и Jetpack Compose.
-
-                    Твоя задача:
-                    - Помогать с написанием кода на Jetpack Compose
-                    - Отвечать на вопросы по Android разработке
-                    - Предоставлять лучшие практики и рекомендации
-                    - Объяснять концепции четко и понятно
-
-                    При написании кода:
-                    - Используй современные API (Material3, Navigation Compose)
-                    - Следуй принципам Jetpack Compose
-                    - Пиши чистый, идиоматический Kotlin код
-                    - Учитывай производительность и оптимизацию
-                    """.trimIndent()
+                    content = SystemPrompts.BASIC_ASSISTANT
                 )
-            ) + conversationHistory + listOf(
+            ) + listOf(
                 OllamaChatMessage(role = "user", content = userMessage)
             )
 
@@ -416,44 +443,11 @@ class OllamaClient(
      * Специализированный метод для генерации кода на Jetpack Compose
      * Использует оптимизированные параметры для написания кода
      */
-    suspend fun generateJetpackComposeCode(
-        userPrompt: String,
-        conversationHistory: List<OllamaChatMessage> = emptyList()
-    ): OllamaChatResponse {
+    suspend fun generateJetpackComposeCode(userPrompt: String): OllamaChatResponse {
         return try {
-            val systemPrompt = """
-            Ты — эксперт по разработке Android приложений на Kotlin и Jetpack Compose.
-
-            Твоя задача — генерировать чистый, идиоматический и современный код на Jetpack Compose.
-
-            ВАЖНЫЕ ПРАВИЛА:
-            1. Используй только современные API Jetpack Compose (Material3, если требуется UI)
-            2. Следуй принципам Compose: однонаправленный поток данных, поднятие состояния
-            3. Применяй best practices: помни о recomposition, используй remember, derivedStateOf когда нужно
-            4. Код должен быть типобезопасным и использовать возможности Kotlin
-            5. Добавляй минимальные комментарии только для сложной логики
-            6. Используй @Composable функции правильно (соблюдай naming conventions)
-            7. Для preview используй @Preview с @Composable функциями
-            8. Применяй модификаторы через Modifier DSL
-            9. Используй LaunchedEffect, rememberCoroutineScope для side effects
-            10. Для навигации используй Navigation Compose
-
-            СТРУКТУРА ОТВЕТА:
-            - Начинай с краткого объяснения (1-2 предложения)
-            - Предоставь полный, готовый к использованию код
-            - Если код большой, структурируй его логически
-            - В конце дай краткие рекомендации по использованию (если нужно)
-
-            ОПТИМИЗАЦИЯ:
-            - Минимизируй ненужные recomposition
-            - Используй remember для вычисляемых значений
-            - Применяй Modifier правильно и эффективно
-            - Избегай создания лямбд в Composable без необходимости
-            """.trimIndent()
-
             val messages = listOf(
-                OllamaChatMessage(role = "system", content = systemPrompt)
-            ) + conversationHistory + listOf(
+                OllamaChatMessage(role = "system", content = SystemPrompts.JETPACK_COMPOSE_EXPERT)
+            ) + listOf(
                 OllamaChatMessage(role = "user", content = userPrompt)
             )
 
@@ -486,62 +480,6 @@ class OllamaClient(
             result
         } catch (e: Exception) {
             Timber.e(e, "Error generating Jetpack Compose code")
-            throw e
-        }
-    }
-
-    /**
-     * Отправка сообщения в чат с RAG контекстом
-     */
-    suspend fun chatWithContext(
-        userMessage: String,
-        context: String,
-        conversationHistory: List<OllamaChatMessage> = emptyList()
-    ): OllamaChatResponse {
-        return try {
-            val systemPrompt = """
-            Ты — AI-ассистент, который отвечает на вопросы
-        """.trimIndent()
-
-            val messages = listOf(
-                OllamaChatMessage(role = "system", content = systemPrompt)
-            ) + conversationHistory + listOf(
-                OllamaChatMessage(role = "user", content = userMessage)
-            )
-
-            val modelToUse = getResolvedModelName()
-            val request = OllamaChatRequest(
-                model = modelToUse,
-                messages = messages,
-                stream = false,
-                options = OllamaChatOptions(
-                    temperature = 0.3,
-                    num_ctx = 8192,
-                    num_predict = 2048,
-                    top_p = 0.9,
-                    top_k = 40,
-                    repeat_penalty = 1.1
-                )
-            )
-
-            val response = httpClient.post("$baseUrl/api/chat") {
-                contentType(ContentType.Application.Json)
-                setBody(request)
-            }
-
-            val responseText = response.bodyAsText()
-            Timber.d("ChatWithContext response status: ${response.status}, body length: ${responseText.length}")
-            val result = parseNdjsonChatResponse(responseText)
-            Timber.d("ChatWithContext response parsed successfully, done: ${result.done}, message length: ${result.message.content.length}")
-            if (!result.done) {
-                Timber.w("Response marked as not done, but stream=false")
-            }
-            if (result.message.content.isBlank()) {
-                Timber.w("Warning: ChatWithContext response content is empty!")
-            }
-            result
-        } catch (e: Exception) {
-            Timber.e(e, "Error in chatWithContext request to Ollama")
             throw e
         }
     }

@@ -12,7 +12,6 @@ import dev.kamikaze.mivdating.data.filtering.FilteredResults
 import dev.kamikaze.mivdating.data.indexing.IndexingProgress
 import dev.kamikaze.mivdating.data.indexing.IndexingService
 import dev.kamikaze.mivdating.data.models.Document
-import dev.kamikaze.mivdating.data.models.OllamaChatMessage
 import dev.kamikaze.mivdating.data.network.OllamaClient
 import dev.kamikaze.mivdating.data.parser.DocumentParser
 import dev.kamikaze.mivdating.data.storage.ChatHistoryRepository
@@ -60,6 +59,9 @@ data class RAGUiState(
     // Диалог настроек
     val showSettingsDialog: Boolean = false,
 
+    // Режим оптимизации для Jetpack Compose
+    val useOptimizedComposeMode: Boolean = true,
+
     val error: String? = null,
     val ollamaAvailable: Boolean = false,
     val ollamaUrl: String = "http://130.49.153.154:8000",
@@ -97,7 +99,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
         loadChatHistory()
         autoIndexIfNeeded()
     }
-    
+
     /**
      * Загружает настройки Ollama и обновляет UI и клиент
      */
@@ -154,11 +156,17 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
                     // Проверяем доступность модели и пытаемся найти альтернативу
                     val isModelAvailable = ollamaClient.isModelAvailable()
                     if (!isModelAvailable) {
-                        android.util.Log.w("RAGViewModel", "Ollama is available but model qwen3:14b is not found")
+                        android.util.Log.w(
+                            "RAGViewModel",
+                            "Ollama is available but model qwen3:14b is not found"
+                        )
                         // Пытаемся найти альтернативную модель
                         val alternative = ollamaClient.findQwen14bModel()
                         if (alternative != null) {
-                            android.util.Log.i("RAGViewModel", "Found alternative model: $alternative")
+                            android.util.Log.i(
+                                "RAGViewModel",
+                                "Found alternative model: $alternative"
+                            )
                         } else {
                             val allModels = ollamaClient.getAvailableModels()
                             android.util.Log.w("RAGViewModel", "Available models: $allModels")
@@ -404,6 +412,7 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Отправить сообщение в чат (без RAG, прямой запрос к модели)
+     * Использует оптимизированный режим для Jetpack Compose если включен
      */
     fun sendChatMessage() {
         val userMessage = _uiState.value.currentInput.trim()
@@ -425,25 +434,16 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
             )
 
             try {
-                // Собрать историю диалога для Ollama
-                val conversationHistory = _uiState.value.chatMessages
-                    .dropLast(1) // Убираем только что добавленное сообщение пользователя
-                    .map { msg ->
-                        OllamaChatMessage(
-                            role = if (msg.isUser) "user" else "assistant",
-                            content = msg.text
-                        )
-                    }
-
-                // Отправить прямой запрос в Ollama без RAG
-                android.util.Log.d("RAGViewModel", "Sending direct chat request to Ollama")
-                val answer = ollamaClient.chat(
-                    userMessage = userMessage,
-                    conversationHistory = conversationHistory
-                )
-
-                android.util.Log.d("RAGViewModel", "Received response from Ollama, done: ${answer.done}, content length: ${answer.message.content.length}")
-
+                // Выбираем метод в зависимости от режима
+                val answer = if (_uiState.value.useOptimizedComposeMode) {
+                    ollamaClient.generateJetpackComposeCode(
+                        userPrompt = userMessage
+                    )
+                } else {
+                    ollamaClient.chat(
+                        userMessage = userMessage
+                    )
+                }
                 // Добавить ответ AI в чат
                 val aiChatMessage = dev.kamikaze.mivdating.data.models.ChatMessage(
                     id = java.util.UUID.randomUUID().toString(),
@@ -462,38 +462,43 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
 
             } catch (e: Exception) {
                 android.util.Log.e("RAGViewModel", "Error sending chat message", e)
-                
+
                 // Пытаемся получить список доступных моделей для более информативного сообщения
                 val availableModels = try {
                     ollamaClient.getAvailableModels()
                 } catch (ex: Exception) {
                     emptyList()
                 }
-                
+
                 val errorMessage = when {
-                    e.message?.contains("timeout", ignoreCase = true) == true -> 
+                    e.message?.contains("timeout", ignoreCase = true) == true ->
                         "Превышено время ожидания ответа от Ollama (5 минут). Проверьте, что Ollama запущен и модель доступна."
-                    e.message?.contains("connection", ignoreCase = true) == true || 
-                    e.message?.contains("failed to connect", ignoreCase = true) == true -> 
+
+                    e.message?.contains("connection", ignoreCase = true) == true ||
+                            e.message?.contains("failed to connect", ignoreCase = true) == true ->
                         "Не удалось подключиться к Ollama. Убедитесь, что:\n" +
-                        "1. Ollama запущен на вашем компьютере\n" +
-                        "2. Для эмулятора: используйте адрес http://130.49.153.154:8000\n" +
-                        "3. Для реального устройства: используйте IP вашего компьютера"
-                    e.message?.contains("model", ignoreCase = true) == true || 
-                    e.message?.contains("not found", ignoreCase = true) == true -> {
+                                "1. Ollama запущен на вашем компьютере\n" +
+                                "2. Для эмулятора: используйте адрес http://130.49.153.154:8000\n" +
+                                "3. Для реального устройства: используйте IP вашего компьютера"
+
+                    e.message?.contains("model", ignoreCase = true) == true ||
+                            e.message?.contains("not found", ignoreCase = true) == true -> {
                         val baseMsg = "Модель qwen3:14b не найдена."
                         if (availableModels.isNotEmpty()) {
-                            baseMsg + "\n\nДоступные модели:\n" + 
-                            availableModels.joinToString("\n") { "  • $it" } +
-                            "\n\nПопробуйте:\n  ollama pull qwen3:14b\nили используйте одну из доступных моделей."
+                            baseMsg + "\n\nДоступные модели:\n" +
+                                    availableModels.joinToString("\n") { "  • $it" } +
+                                    "\n\nПопробуйте:\n  ollama pull qwen3:14b\nили используйте одну из доступных моделей."
                         } else {
                             baseMsg + "\n\nВыполните: ollama pull qwen3:14b"
                         }
                     }
-                    e.message?.contains("404", ignoreCase = true) == true -> 
+
+                    e.message?.contains("404", ignoreCase = true) == true ->
                         "Эндпоинт не найден. Проверьте, что Ollama запущен и доступен на http://130.49.153.154:8000"
+
                     else -> {
-                        val baseMsg = "Ошибка отправки сообщения: ${e.message ?: e.javaClass.simpleName}"
+                        val baseMsg =
+                            "Ошибка отправки сообщения: ${e.message ?: e.javaClass.simpleName}"
                         if (availableModels.isNotEmpty()) {
                             baseMsg + "\n\nДоступные модели: ${availableModels.joinToString(", ")}"
                         } else {
@@ -510,81 +515,12 @@ class RAGViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Отправить сообщение для генерации кода на Jetpack Compose
-     * Использует оптимизированные параметры и специализированный промпт
+     * Переключить режим оптимизации для Jetpack Compose
      */
-    fun sendComposeCodeRequest() {
-        val userMessage = _uiState.value.currentInput.trim()
-        if (userMessage.isBlank()) return
-
-        viewModelScope.launch {
-            // Добавить сообщение пользователя в чат
-            val userChatMessage = dev.kamikaze.mivdating.data.models.ChatMessage(
-                id = java.util.UUID.randomUUID().toString(),
-                text = userMessage,
-                isUser = true
-            )
-
-            _uiState.value = _uiState.value.copy(
-                chatMessages = _uiState.value.chatMessages + userChatMessage,
-                currentInput = "",
-                isGenerating = true,
-                error = null
-            )
-
-            try {
-                // Собрать историю диалога для Ollama
-                val conversationHistory = _uiState.value.chatMessages
-                    .dropLast(1) // Убираем только что добавленное сообщение пользователя
-                    .map { msg ->
-                        OllamaChatMessage(
-                            role = if (msg.isUser) "user" else "assistant",
-                            content = msg.text
-                        )
-                    }
-
-                // Отправить запрос на генерацию кода
-                android.util.Log.d("RAGViewModel", "Sending Compose code generation request")
-                val answer = ollamaClient.generateJetpackComposeCode(
-                    userPrompt = userMessage,
-                    conversationHistory = conversationHistory
-                )
-
-                android.util.Log.d("RAGViewModel", "Received Compose code, content length: ${answer.message.content.length}")
-
-                // Добавить ответ AI в чат
-                val aiChatMessage = dev.kamikaze.mivdating.data.models.ChatMessage(
-                    id = java.util.UUID.randomUUID().toString(),
-                    text = answer.message.content,
-                    isUser = false,
-                    sources = emptyList()
-                )
-
-                _uiState.value = _uiState.value.copy(
-                    chatMessages = _uiState.value.chatMessages + aiChatMessage,
-                    isGenerating = false
-                )
-
-                // Автоматически сохраняем историю после получения ответа
-                saveChatHistory()
-
-            } catch (e: Exception) {
-                android.util.Log.e("RAGViewModel", "Error generating Compose code", e)
-
-                val errorMessage = when {
-                    e.message?.contains("timeout", ignoreCase = true) == true ->
-                        "Превышено время ожидания. Генерация кода может занять больше времени."
-                    e.message?.contains("connection", ignoreCase = true) == true ->
-                        "Ошибка подключения к LLM сервису. Проверьте подключение."
-                    else -> "Ошибка генерации кода: ${e.message}"
-                }
-
-                _uiState.value = _uiState.value.copy(
-                    isGenerating = false,
-                    error = errorMessage
-                )
-            }
-        }
+    fun toggleOptimizedComposeMode() {
+        _uiState.value = _uiState.value.copy(
+            useOptimizedComposeMode = !_uiState.value.useOptimizedComposeMode
+        )
     }
 
     /**
