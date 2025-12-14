@@ -1,0 +1,96 @@
+2025-01-10 10:15:23 INFO [MainActivity] App started, version 1.2.3
+2025-01-10 10:15:24 INFO [SplashScreen] Loading configuration...
+2025-01-10 10:15:25 INFO [AuthRepository] Checking saved credentials
+2025-01-10 10:15:26 DEBUG [NetworkClient] Initializing with base URL: https://api.mivdating.com
+2025-01-10 10:15:27 INFO [MainActivity] Navigation to LoginScreen
+2025-01-10 10:15:28 DEBUG [LoginScreen] Screen rendered
+2025-01-10 10:15:23 INFO [LoginViewModel] Login attempt for user: user_001
+2025-01-10 10:15:24 DEBUG [AuthRepository] Sending login request
+2025-01-10 10:15:25 INFO [AuthRepository] Login successful for user_001
+2025-01-10 10:15:26 INFO [MainActivity] Navigation to HomeScreen
+2025-01-10 10:16:45 INFO [ProfileScreen] User user_001 viewing profile
+2025-01-10 10:16:46 DEBUG [ProfileViewModel] Loading profile data
+2025-01-10 10:16:47 INFO [ProfileRepository] Profile loaded successfully
+2025-01-10 10:17:12 INFO [ChatScreen] Opening chat list for user_001
+2025-01-10 10:17:13 DEBUG [ChatViewModel] Loading conversations
+2025-01-10 10:17:14 INFO [ChatRepository] Found 3 active conversations
+2025-01-10 10:18:30 ERROR [ChatViewModel] Failed to send message: java.net.SocketTimeoutException: timeout
+2025-01-10 10:18:31 WARN [NetworkClient] Retry attempt 1/3
+2025-01-10 10:19:45 INFO [ChatViewModel] Message sent successfully
+2025-01-10 10:20:00 ERROR [AuthRepository] Authentication failed: Invalid credentials
+2025-01-10 10:20:01 WARN [LoginViewModel] Login failed for user_002
+2025-01-10 10:21:15 INFO [LoginViewModel] Login attempt for user: user_002
+2025-01-10 10:21:16 INFO [AuthRepository] Login successful for user_002
+2025-01-10 10:22:30 INFO [ProfileScreen] User user_002 editing profile
+2025-01-10 10:22:31 DEBUG [ProfileViewModel] Profile edit mode enabled
+2025-01-10 10:23:45 ERROR [ProfileValidator] Validation failed: Bio too long (567 > 500)
+2025-01-10 10:23:46 WARN [ProfileViewModel] Profile save failed due to validation
+2025-01-10 10:24:00 INFO [ProfileViewModel] Profile saved successfully
+2025-01-10 10:25:15 INFO [LoginViewModel] Login attempt for user: user_003
+2025-01-10 10:25:16 INFO [AuthRepository] Login successful for user_003
+2025-01-10 10:26:30 INFO [MatchesScreen] Loading matches for user_003
+2025-01-10 10:26:31 DEBUG [MatchesViewModel] Fetching potential matches
+2025-01-10 10:26:32 INFO [MatchesRepository] Found 12 potential matches
+2025-01-10 10:27:45 INFO [MatchesViewModel] User liked profile: profile_456
+2025-01-10 10:27:46 DEBUG [MatchesRepository] Sending like action
+2025-01-10 10:27:47 INFO [MatchesRepository] Like registered successfully
+2025-01-10 10:28:00 INFO [ChatScreen] Opening chat list for user_003
+2025-01-10 10:29:15 INFO [ChatViewModel] Message sent successfully
+2025-01-10 10:30:30 INFO [RegistrationScreen] New user registration started
+2025-01-10 10:30:31 DEBUG [RegistrationViewModel] Registration flow initialized
+2025-01-10 10:31:45 INFO [ImageUploader] Uploading profile photo
+2025-01-10 10:31:46 DEBUG [ImageUploader] Image size: 2.4 MB
+2025-01-10 10:31:47 WARN [ImageUploader] Large image, compressing...
+2025-01-10 10:31:48 INFO [ImageUploader] Image compressed to 856 KB
+2025-01-10 10:32:00 ERROR [ImageUploader] Upload failed: java.io.IOException: Connection reset
+2025-01-10 10:32:01 WARN [NetworkClient] Retry attempt 1/3
+2025-01-10 10:33:15 INFO [RegistrationViewModel] Registration submitted successfully
+2025-01-10 10:34:30 INFO [LoginViewModel] Login attempt for user: user_005
+2025-01-10 10:34:31 INFO [AuthRepository] Login successful for user_005
+2025-01-10 10:35:45 INFO [ProfileScreen] User user_005 viewing profile
+2025-01-10 10:36:00 INFO [SettingsScreen] User user_005 opened settings
+2025-01-10 10:36:01 DEBUG [SettingsViewModel] Loading user preferences
+2025-01-10 10:37:15 INFO [SettingsViewModel] Privacy settings updated
+2025-01-10 10:37:16 DEBUG [SettingsRepository] Saving preferences to local storage
+2025-01-10 10:38:30 INFO [AuthRepository] User user_005 logged out
+2025-01-10 10:38:31 INFO [MainActivity] Navigation to LoginScreen
+2025-01-10 10:39:45 ERROR [AuthRepository] Authentication failed: Invalid credentials
+2025-01-10 10:39:46 WARN [LoginViewModel] Login failed for user_006
+2025-01-10 10:40:00 ERROR [AuthRepository] Authentication failed: Invalid credentials
+2025-01-10 10:40:01 WARN [LoginViewModel] Login failed for user_006 (attempt 2)
+2025-01-10 10:40:02 INFO [LoginViewModel] Showing forgot password option
+2025-01-10 10:41:15 INFO [PasswordResetScreen] Password reset requested for email
+2025-01-10 10:41:16 DEBUG [AuthRepository] Sending password reset email
+2025-01-10 10:41:17 INFO [AuthRepository] Password reset email sent
+2025-01-10 10:42:30 INFO [LoginViewModel] Login attempt for user: user_007
+2025-01-10 10:42:31 INFO [AuthRepository] Login successful for user_007
+2025-01-10 10:43:45 INFO [MatchesScreen] Loading matches for user_007
+2025-01-10 10:44:00 INFO [ProfileScreen] User user_007 viewing profile
+2025-01-10 10:45:15 INFO [ChatScreen] Opening chat list for user_007
+2025-01-10 10:46:30 ERROR [ChatViewModel] Failed to send message: java.net.SocketTimeoutException: timeout
+2025-01-10 10:46:31 WARN [NetworkClient] Retry attempt 1/3
+2025-01-10 10:47:45 ERROR [ChatViewModel] Failed to send message: java.net.SocketTimeoutException: timeout
+2025-01-10 10:47:46 WARN [NetworkClient] Retry attempt 2/3
+2025-01-10 10:47:47 ERROR [NetworkClient] All retry attempts exhausted
+2025-01-10 10:48:00 INFO [MainActivity] App closing, user_007
+2025-01-10 10:49:15 INFO [RegistrationScreen] New user registration started
+2025-01-10 10:49:16 DEBUG [RegistrationViewModel] Registration flow initialized
+2025-01-10 10:50:30 DEBUG [RegistrationViewModel] User filling registration form
+2025-01-10 10:51:45 WARN [RegistrationViewModel] User abandoned registration before completion
+2025-01-10 10:51:46 INFO [MainActivity] App closing, incomplete registration
+2025-01-10 10:52:00 INFO [LoginViewModel] Login attempt for user: user_009
+2025-01-10 10:52:01 INFO [AuthRepository] Login successful for user_009
+2025-01-10 10:53:15 INFO [MatchesScreen] Loading matches for user_009
+2025-01-10 10:54:30 INFO [MatchesViewModel] User liked profile: profile_789
+2025-01-10 10:55:45 INFO [ChatScreen] Opening chat list for user_009
+2025-01-10 10:56:00 INFO [ChatViewModel] Message sent successfully
+2025-01-10 10:57:15 INFO [LoginViewModel] Login attempt for user: user_010
+2025-01-10 10:57:16 INFO [AuthRepository] Login successful for user_010
+2025-01-10 10:58:30 INFO [SubscriptionScreen] User user_010 viewing subscription options
+2025-01-10 10:58:31 DEBUG [SubscriptionViewModel] Loading available plans
+2025-01-10 10:58:32 INFO [SubscriptionRepository] Found 3 subscription tiers
+2025-01-10 10:59:45 ERROR [PaymentProcessor] Payment failed: insufficient_funds
+2025-01-10 10:59:46 WARN [SubscriptionViewModel] Payment declined, showing error
+2025-01-10 11:00:00 ERROR [PaymentProcessor] Payment failed: card_declined
+2025-01-10 11:00:01 ERROR [SubscriptionViewModel] Multiple payment failures for user_010
+2025-01-10 11:01:15 INFO [MainActivity] App closing, user_010
